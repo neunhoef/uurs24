@@ -1,6 +1,6 @@
 mod data;
 
-use data::load_regatta_data;
+use data::{load_regatta_data, build_regatta_graph};
 
 fn main() {
     println!("Loading regatta data...");
@@ -17,25 +17,25 @@ fn main() {
                 println!("\nFINISH buoy details:");
                 println!("  Name: {}", finish_boei.name);
                 if let Some(buoy_type) = &finish_boei.buoy_type {
-                    println!("  Type: {}", buoy_type);
+                    println!("  Type: {buoy_type}");
                 }
                 if let Some(lat) = &finish_boei.lat {
-                    println!("  Latitude: {:.6}° (decimal)", lat);
+                    println!("  Latitude: {lat:.6}° (decimal)");
                 }
                 if let Some(long) = &finish_boei.long {
-                    println!("  Longitude: {:.6}° (decimal)", long);
+                    println!("  Longitude: {long:.6}° (decimal)");
                 }
                 if let Some(lat_str) = &finish_boei.lat_min {
-                    println!("  Latitude (original): {}", lat_str);
+                    println!("  Latitude (original): {lat_str}");
                 }
                 if let Some(long_str) = &finish_boei.long_min {
-                    println!("  Longitude (original): {}", long_str);
+                    println!("  Longitude (original): {long_str}");
                 }
                 
                 // Demonstrate the convenience methods
                 if finish_boei.has_coordinates() {
                     if let Some((lat, long)) = finish_boei.coordinates() {
-                        println!("  Coordinates tuple: ({:.6}, {:.6})", lat, long);
+                        println!("  Coordinates tuple: ({lat:.6}, {long:.6})");
                     }
                 }
             }
@@ -58,9 +58,52 @@ fn main() {
             for boei in start_boeien.iter().take(3) {
                 println!("  {}: {}", boei.name, boei.description.as_ref().unwrap_or(&"No description".to_string()));
             }
+            
+            // Create the petgraph from the loaded data
+            println!("\nBuilding regatta graph...");
+            let (graph, node_indices) = build_regatta_graph(&data);
+            
+            println!("Graph created successfully:");
+            println!("  - {} nodes (boeien)", graph.node_count());
+            println!("  - {} edges (starts + rakken)", graph.edge_count());
+            
+            // Show some example nodes and their types
+            println!("\nExample nodes in the graph:");
+            for (i, node_weight) in graph.node_weights().enumerate().take(5) {
+                let node_idx = graph.node_indices().nth(i).unwrap();
+                let unknown_str = "Unknown".to_string();
+                let boei_name = node_indices.iter()
+                    .find(|(_, idx)| **idx == node_idx)
+                    .map(|(name, _)| name)
+                    .unwrap_or(&unknown_str);
+                
+                let no_type_str = "No type".to_string();
+                let node_type = node_weight.as_ref().unwrap_or(&no_type_str);
+                println!("  {}: {} (type: {})", node_idx.index(), boei_name, node_type);
+            }
+            
+            // Show some example edges with their properties
+            println!("\nExample edges in the graph:");
+            for edge_idx in graph.edge_indices().take(5) {
+                let (source, target) = graph.edge_endpoints(edge_idx).unwrap();
+                let edge_weight = graph.edge_weight(edge_idx).unwrap();
+                
+                let unknown_str = "Unknown".to_string();
+                let source_name = node_indices.iter()
+                    .find(|(_, idx)| **idx == source)
+                    .map(|(name, _)| name)
+                    .unwrap_or(&unknown_str);
+                let target_name = node_indices.iter()
+                    .find(|(_, idx)| **idx == target)
+                    .map(|(name, _)| name)
+                    .unwrap_or(&unknown_str);
+                
+                println!("  {} -> {}: distance={:.2} nm, speed={:.1}", 
+                    source_name, target_name, edge_weight.distance, edge_weight.speed);
+            }
         }
         Err(e) => {
-            eprintln!("Error loading regatta data: {}", e);
+            eprintln!("Error loading regatta data: {e}");
             std::process::exit(1);
         }
     }

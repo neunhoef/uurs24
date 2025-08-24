@@ -1,6 +1,9 @@
 use serde::{Deserialize, Deserializer, Serialize};
 use std::collections::HashMap;
 use std::error::Error;
+use petgraph::graph::{DiGraph, NodeIndex};
+#[cfg(test)]
+use petgraph::Direction;
 
 /// Custom deserializer for European decimal format (comma as decimal separator)
 fn deserialize_european_float<'de, D>(deserializer: D) -> Result<f64, D::Error>
@@ -82,7 +85,7 @@ impl Boei {
         // Split by degree symbol
         let parts: Vec<&str> = coord_str.split('°').collect();
         if parts.len() != 2 {
-            return Err(format!("Invalid coordinate format: {}", coord_str).into());
+            return Err(format!("Invalid coordinate format: {coord_str}").into());
         }
 
         let degrees_str = parts[0].trim();
@@ -111,7 +114,7 @@ impl Boei {
                 // Convert to decimal minutes: minutes + seconds/60
                 minutes = minutes_val + seconds_val / 60.0;
             } else {
-                return Err(format!("Invalid minutes format: {}", minutes_part).into());
+                return Err(format!("Invalid minutes format: {minutes_part}").into());
             }
         } else {
             // Format: "5,020'" (decimal minutes)
@@ -180,7 +183,7 @@ impl RegattaData {
     pub fn get_boeien_by_type(&self, buoy_type: &str) -> Vec<&Boei> {
         self.boeien
             .iter()
-            .filter(|b| b.buoy_type.as_ref().map_or(false, |t| t == buoy_type))
+            .filter(|b| b.buoy_type.as_ref().is_some_and(|t| t == buoy_type))
             .collect()
     }
 
@@ -223,6 +226,74 @@ pub fn load_regatta_data() -> Result<RegattaData, Box<dyn Error>> {
     }
 
     Ok(data)
+}
+
+/// Edge data for the regatta graph
+#[derive(Debug, Clone)]
+pub struct RegattaEdge {
+    pub distance: f64,
+    pub speed: f64,
+}
+
+/// Build a directed graph from the regatta data
+/// 
+/// Nodes represent boeien (buoys) and store their type.
+/// Edges represent:
+/// - Starts: directed edges from start boeien to target boeien
+/// - Rakken: directed edges in both directions between boeien
+/// 
+/// Returns a tuple of (graph, node_indices_by_name) where the HashMap
+/// maps boei names to their NodeIndex in the graph.
+pub fn build_regatta_graph(data: &RegattaData) -> (DiGraph<Option<String>, RegattaEdge>, HashMap<String, NodeIndex>) {
+    let mut graph = DiGraph::new();
+    let mut node_indices = HashMap::new();
+    
+    // Add all boeien as nodes
+    for boei in &data.boeien {
+        let node_idx = graph.add_node(boei.buoy_type.clone());
+        node_indices.insert(boei.name.clone(), node_idx);
+    }
+    
+    // Add edges for starts (from start boeien to target boeien)
+    for start in &data.starts {
+        if let (Some(&from_idx), Some(&to_idx)) = (node_indices.get(&start.from), node_indices.get(&start.to)) {
+            graph.add_edge(
+                from_idx,
+                to_idx,
+                RegattaEdge {
+                    distance: start.distance,
+                    speed: 0.0, // Speed is set to 0 for now as requested
+                }
+            );
+        }
+    }
+    
+    // Add edges for rakken (in both directions)
+    for rak in &data.rakken {
+        if let (Some(&from_idx), Some(&to_idx)) = (node_indices.get(&rak.from), node_indices.get(&rak.to)) {
+            // Forward edge
+            graph.add_edge(
+                from_idx,
+                to_idx,
+                RegattaEdge {
+                    distance: rak.distance,
+                    speed: 0.0, // Speed is set to 0 for now as requested
+                }
+            );
+            
+            // Reverse edge
+            graph.add_edge(
+                to_idx,
+                from_idx,
+                RegattaEdge {
+                    distance: rak.distance,
+                    speed: 0.0, // Speed is set to 0 for now as requested
+                }
+            );
+        }
+    }
+    
+    (graph, node_indices)
 }
 
 #[cfg(test)]
@@ -352,5 +423,39 @@ mod tests {
         // coordinates() returns (latitude, longitude)
         assert!((coords.0 - (53.0 + 5.020 / 60.0)).abs() < 0.001); // latitude
         assert!((coords.1 - (5.0 + 20.293 / 60.0)).abs() < 0.001); // longitude
+    }
+
+    #[test]
+    fn test_build_regatta_graph() {
+        let data = load_regatta_data().unwrap();
+        let (graph, node_indices) = build_regatta_graph(&data);
+        
+        // Check that all boeien are represented as nodes
+        assert_eq!(graph.node_count(), data.boeien.len());
+        
+        // Check that we can find nodes by name
+        for boei in &data.boeien {
+            assert!(node_indices.contains_key(&boei.name));
+        }
+        
+        // Check that start edges are added
+        let start_edges = graph.edge_count();
+        assert!(start_edges > 0, "Graph should have edges");
+        
+        // Verify that start boeien exist and have outgoing edges
+        let start_boeien = data.get_boeien_by_type("Startboei");
+        for start_boei in start_boeien {
+            if let Some(&node_idx) = node_indices.get(&start_boei.name) {
+                let outgoing_edges = graph.edges_directed(node_idx, Direction::Outgoing).count();
+                assert!(outgoing_edges > 0, "Start boei {} should have outgoing edges", start_boei.name);
+            }
+        }
+        
+        // Check that edge data contains distance and speed
+        for edge_idx in graph.edge_indices() {
+            let edge_weight = graph.edge_weight(edge_idx).unwrap();
+            assert!(edge_weight.distance > 0.0, "Edge distance should be positive");
+            assert_eq!(edge_weight.speed, 0.0, "Edge speed should be 0.0 for now");
+        }
     }
 }
