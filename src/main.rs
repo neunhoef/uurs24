@@ -1,7 +1,9 @@
 mod data;
+mod plot;
 
 use clap::Command;
 use data::{load_regatta_data, build_regatta_graph};
+use plot::save_regatta_plot;
 
 fn main() {
     let matches = Command::new("uurs24")
@@ -15,6 +17,18 @@ fn main() {
         .subcommand(
             Command::new("nop")
                 .about("Do nothing (placeholder command)")
+        )
+        .subcommand(
+            Command::new("plot")
+                .about("Generate SVG visualization of the regatta course")
+                .arg(
+                    clap::Arg::new("output")
+                        .short('o')
+                        .long("output")
+                        .value_name("FILE")
+                        .help("Output SVG file path (default: regatta_course.svg)")
+                        .default_value("regatta_course.svg")
+                )
         )
         .get_matches();
 
@@ -35,6 +49,16 @@ fn main() {
         }
         Some(("nop", _)) => {
             // Do nothing as requested
+        }
+        Some(("plot", plot_matches)) => {
+            let output_path = plot_matches.get_one::<String>("output").unwrap();
+            match save_regatta_plot(&data, output_path, None) {
+                Ok(()) => println!("Successfully generated SVG plot!"),
+                Err(e) => {
+                    eprintln!("Error generating SVG plot: {e}");
+                    std::process::exit(1);
+                }
+            }
         }
         _ => {
             // Default behavior when no subcommand is provided
