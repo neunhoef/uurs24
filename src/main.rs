@@ -107,6 +107,43 @@ fn show_regatta_data(data: &data::RegattaData) {
         println!("  {} -> {} ({} nm)", rak.from, rak.to, rak.distance);
     }
 
+    // Show complete polar data
+    let polar_data = data.get_polar_data();
+    println!("\nComplete Polar Performance Data:");
+    println!("Wind speeds: {:?} knots", polar_data.wind_speeds);
+    println!(
+        "True Wind Angles (TWA): {:?} degrees",
+        polar_data.wind_angles
+    );
+    println!();
+
+    // Print header row with wind speeds
+    print!("TWA/TWS\t");
+    for &wind_speed in &polar_data.wind_speeds {
+        print!("{:>6.0}kt\t", wind_speed);
+    }
+    println!();
+
+    // Print separator line
+    print!("--------");
+    for _ in &polar_data.wind_speeds {
+        print!("!---------------");
+    }
+    println!();
+
+    // Print each row with wind angle and boat speeds
+    for (angle_idx, &wind_angle) in polar_data.wind_angles.iter().enumerate() {
+        print!("{:>6.0}°\t", wind_angle);
+        for &boat_speed in &polar_data.boat_speeds[angle_idx] {
+            print!("{:>6.2}kt\t", boat_speed);
+        }
+        println!();
+    }
+
+    println!();
+    println!("Note: TWA = True Wind Angle (0° = head to wind, 90° = beam reach, 180° = downwind)");
+    println!("      Boat speeds are in knots (kt)");
+
     // Show buoys by type
     let start_boeien = data.get_boeien_by_type("Startboei");
     println!("\nStart buoys ({} found):", start_boeien.len());
@@ -122,7 +159,7 @@ fn show_regatta_data(data: &data::RegattaData) {
 
     // Create the petgraph from the loaded data
     println!("\nBuilding regatta graph...");
-    let (graph, node_indices) = build_regatta_graph(&data);
+    let (graph, node_indices) = build_regatta_graph(data);
 
     println!("Graph created successfully:");
     println!("  - {} nodes (boeien)", graph.node_count());

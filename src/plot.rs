@@ -181,8 +181,7 @@ pub fn create_regatta_plot(data: &RegattaData, config: PlotConfig) -> Result<Str
         .set("fill", "black");
     
     let bounds_text = Text::new(format!(
-        "Bounds: {:.4}°N to {:.4}°N, {:.4}°E to {:.4}°E",
-        min_lat, max_lat, min_long, max_long
+        "Bounds: {min_lat:.4}°N to {max_lat:.4}°N, {min_long:.4}°E to {max_long:.4}°E"
     ))
         .set("x", 10.0)
         .set("y", config.height as f64 - 10.0)
@@ -209,7 +208,7 @@ pub fn save_regatta_plot(
     let svg_content = create_regatta_plot(data, config)?;
     
     std::fs::write(output_path, svg_content)?;
-    println!("SVG plot saved to: {}", output_path);
+    println!("SVG plot saved to: {output_path}");
     
     Ok(())
 }
