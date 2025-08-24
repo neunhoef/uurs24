@@ -19,11 +19,24 @@ fn main() {
                 if let Some(buoy_type) = &finish_boei.buoy_type {
                     println!("  Type: {}", buoy_type);
                 }
-                if let Some(lat) = &finish_boei.lat_min {
-                    println!("  Latitude: {}", lat);
+                if let Some(lat) = &finish_boei.lat {
+                    println!("  Latitude: {:.6}° (decimal)", lat);
                 }
-                if let Some(long) = &finish_boei.long_min {
-                    println!("  Longitude: {}", long);
+                if let Some(long) = &finish_boei.long {
+                    println!("  Longitude: {:.6}° (decimal)", long);
+                }
+                if let Some(lat_str) = &finish_boei.lat_min {
+                    println!("  Latitude (original): {}", lat_str);
+                }
+                if let Some(long_str) = &finish_boei.long_min {
+                    println!("  Longitude (original): {}", long_str);
+                }
+                
+                // Demonstrate the convenience methods
+                if finish_boei.has_coordinates() {
+                    if let Some((lat, long)) = finish_boei.coordinates() {
+                        println!("  Coordinates tuple: ({:.6}, {:.6})", lat, long);
+                    }
                 }
             }
             
@@ -43,7 +56,7 @@ fn main() {
             let start_boeien = data.get_boeien_by_type("Startboei");
             println!("\nStart buoys ({} found):", start_boeien.len());
             for boei in start_boeien.iter().take(3) {
-                println!("  {}: {}", boei.name, boei.notes.as_ref().unwrap_or(&"No notes".to_string()));
+                println!("  {}: {}", boei.name, boei.description.as_ref().unwrap_or(&"No description".to_string()));
             }
         }
         Err(e) => {
