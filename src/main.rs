@@ -24,6 +24,18 @@ fn main() {
                         .default_value("regatta_course.svg"),
                 ),
         )
+        .subcommand(
+            Command::new("graph")
+                .about("Export the regatta graph to a DOT file for graphviz")
+                .arg(
+                    clap::Arg::new("output")
+                        .short('o')
+                        .long("output")
+                        .value_name("FILE")
+                        .help("Output DOT file path (default: regatta_graph.dot)")
+                        .default_value("regatta_graph.dot"),
+                ),
+        )
         .get_matches();
 
     // Load data for every subcommand
@@ -50,6 +62,16 @@ fn main() {
                 Ok(()) => println!("Successfully generated SVG plot!"),
                 Err(e) => {
                     eprintln!("Error generating SVG plot: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(("graph", graph_matches)) => {
+            let output_path = graph_matches.get_one::<String>("output").unwrap();
+            match export_regatta_graph(&data, output_path) {
+                Ok(()) => println!("Successfully exported graph to DOT file: {}", output_path),
+                Err(e) => {
+                    eprintln!("Error exporting graph to DOT file: {e}");
                     std::process::exit(1);
                 }
             }
@@ -245,4 +267,66 @@ fn show_regatta_data(data: &data::RegattaData) {
             source_name, target_name, edge_weight.distance, edge_weight.speed
         );
     }
+}
+
+/// Export the regatta graph to a DOT file for graphviz visualization
+fn export_regatta_graph(data: &data::RegattaData, output_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Build the regatta graph
+    let (graph, node_indices) = build_regatta_graph(data);
+    
+    // Create the DOT file content
+    let mut dot_content = String::new();
+    dot_content.push_str("digraph RegattaGraph {\n");
+    dot_content.push_str("  // Graph settings\n");
+    dot_content.push_str("  rankdir=LR;\n");
+    dot_content.push_str("  node [shape=box, style=filled, fillcolor=lightblue];\n");
+    dot_content.push_str("  edge [fontsize=10];\n\n");
+    
+    // Add nodes
+    dot_content.push_str("  // Nodes (Buoys)\n");
+    for (boei_name, &node_idx) in &node_indices {
+        let node_weight = graph.node_weight(node_idx).unwrap();
+        let node_type = node_weight.as_ref().map_or("Unknown", |s| s.as_str());
+        
+        // Color nodes based on type
+        let fillcolor = if node_type == "Startboei" {
+            "lightgreen"
+        } else if node_type == "Finishboei" {
+            "red"
+        } else if node_type == "Merkboei" {
+            "yellow"
+        } else {
+            "lightblue"
+        };
+        
+        dot_content.push_str(&format!("  \"{}\" [label=\"{}\\n({})\", fillcolor={}];\n", 
+            boei_name, boei_name, node_type, fillcolor));
+    }
+    
+    dot_content.push_str("\n  // Edges (Starts and Legs)\n");
+    
+    // Add edges for starts
+    for start in data.get_starts() {
+        if let (Some(&_from_idx), Some(&_to_idx)) = 
+            (node_indices.get(&start.from), node_indices.get(&start.to)) {
+            dot_content.push_str(&format!("  \"{}\" -> \"{}\" [label=\"Start: {:.2}nm\", color=green, style=bold];\n",
+                start.from, start.to, start.distance));
+        }
+    }
+    
+    // Add edges for rakken (legs)
+    for rak in data.get_rakken() {
+        if let (Some(&_from_idx), Some(&_to_idx)) = 
+            (node_indices.get(&rak.from), node_indices.get(&rak.to)) {
+            dot_content.push_str(&format!("  \"{}\" -> \"{}\" [label=\"Leg: {:.2}nm\", color=blue];\n",
+                rak.from, rak.to, rak.distance));
+        }
+    }
+    
+    dot_content.push_str("}\n");
+    
+    // Write the DOT file
+    std::fs::write(output_path, dot_content)?;
+    
+    Ok(())
 }
