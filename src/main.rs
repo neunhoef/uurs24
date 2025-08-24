@@ -2,7 +2,7 @@ mod data;
 mod plot;
 
 use clap::Command;
-use data::{load_regatta_data, build_regatta_graph};
+use data::{build_regatta_graph, load_regatta_data};
 use plot::save_regatta_plot;
 
 fn main() {
@@ -10,14 +10,8 @@ fn main() {
         .about("24-hour regatta data management tool")
         .version("1.0")
         .subcommand_negates_reqs(true)
-        .subcommand(
-            Command::new("show")
-                .about("Show regatta data and statistics")
-        )
-        .subcommand(
-            Command::new("nop")
-                .about("Do nothing (placeholder command)")
-        )
+        .subcommand(Command::new("show").about("Show regatta data and statistics"))
+        .subcommand(Command::new("nop").about("Do nothing (placeholder command)"))
         .subcommand(
             Command::new("plot")
                 .about("Generate SVG visualization of the regatta course")
@@ -27,14 +21,14 @@ fn main() {
                         .long("output")
                         .value_name("FILE")
                         .help("Output SVG file path (default: regatta_course.svg)")
-                        .default_value("regatta_course.svg")
-                )
+                        .default_value("regatta_course.svg"),
+                ),
         )
         .get_matches();
 
     // Load data for every subcommand
     println!("Loading regatta data...");
-    
+
     let data = match load_regatta_data() {
         Ok(data) => data,
         Err(e) => {
@@ -72,8 +66,8 @@ fn show_regatta_data(data: &data::RegattaData) {
     println!("  - {} buoys (boeien)", data.boeien.len());
     println!("  - {} start lines", data.starts.len());
     println!("  - {} legs (rakken)", data.rakken.len());
-    
-    // Example: Find and display the FINISH buoy
+
+    // Find and display the FINISH buoy
     if let Some(finish_boei) = data.get_boei("FINISH") {
         println!("\nFINISH buoy details:");
         println!("  Name: {}", finish_boei.name);
@@ -92,7 +86,7 @@ fn show_regatta_data(data: &data::RegattaData) {
         if let Some(long_str) = &finish_boei.long_min {
             println!("  Longitude (original): {long_str}");
         }
-        
+
         // Demonstrate the convenience methods
         if finish_boei.has_coordinates() {
             if let Some((lat, long)) = finish_boei.coordinates() {
@@ -100,66 +94,82 @@ fn show_regatta_data(data: &data::RegattaData) {
             }
         }
     }
-    
-    // Example: Show some start lines
+
+    // Show start lines
     println!("\nStart lines:");
-    for start in data.get_starts().iter().take(5) {
+    for start in data.get_starts().iter() {
         println!("  {} -> {} ({} nm)", start.from, start.to, start.distance);
     }
-    
-    // Example: Show some legs
+
+    // Show legs
     println!("\nLegs (rakken):");
-    for rak in data.get_rakken().iter().take(5) {
+    for rak in data.get_rakken().iter() {
         println!("  {} -> {} ({} nm)", rak.from, rak.to, rak.distance);
     }
-    
-    // Example: Show buoys by type
+
+    // Show buoys by type
     let start_boeien = data.get_boeien_by_type("Startboei");
     println!("\nStart buoys ({} found):", start_boeien.len());
-    for boei in start_boeien.iter().take(3) {
-        println!("  {}: {}", boei.name, boei.description.as_ref().unwrap_or(&"No description".to_string()));
+    for boei in start_boeien.iter() {
+        println!(
+            "  {}: {}",
+            boei.name,
+            boei.description
+                .as_ref()
+                .unwrap_or(&"No description".to_string())
+        );
     }
-    
+
     // Create the petgraph from the loaded data
     println!("\nBuilding regatta graph...");
     let (graph, node_indices) = build_regatta_graph(&data);
-    
+
     println!("Graph created successfully:");
     println!("  - {} nodes (boeien)", graph.node_count());
     println!("  - {} edges (starts + rakken)", graph.edge_count());
-    
+
     // Show some example nodes and their types
-    println!("\nExample nodes in the graph:");
-    for (i, node_weight) in graph.node_weights().enumerate().take(5) {
+    println!("\nNodes in the graph:");
+    for (i, node_weight) in graph.node_weights().enumerate() {
         let node_idx = graph.node_indices().nth(i).unwrap();
         let unknown_str = "Unknown".to_string();
-        let boei_name = node_indices.iter()
+        let boei_name = node_indices
+            .iter()
             .find(|(_, idx)| **idx == node_idx)
             .map(|(name, _)| name)
             .unwrap_or(&unknown_str);
-        
+
         let no_type_str = "No type".to_string();
         let node_type = node_weight.as_ref().unwrap_or(&no_type_str);
-        println!("  {}: {} (type: {})", node_idx.index(), boei_name, node_type);
+        println!(
+            "  {}: {} (type: {})",
+            node_idx.index(),
+            boei_name,
+            node_type
+        );
     }
-    
+
     // Show some example edges with their properties
-    println!("\nExample edges in the graph:");
-    for edge_idx in graph.edge_indices().take(5) {
+    println!("\nEdges in the graph:");
+    for edge_idx in graph.edge_indices() {
         let (source, target) = graph.edge_endpoints(edge_idx).unwrap();
         let edge_weight = graph.edge_weight(edge_idx).unwrap();
-        
+
         let unknown_str = "Unknown".to_string();
-        let source_name = node_indices.iter()
+        let source_name = node_indices
+            .iter()
             .find(|(_, idx)| **idx == source)
             .map(|(name, _)| name)
             .unwrap_or(&unknown_str);
-        let target_name = node_indices.iter()
+        let target_name = node_indices
+            .iter()
             .find(|(_, idx)| **idx == target)
             .map(|(name, _)| name)
             .unwrap_or(&unknown_str);
-        
-        println!("  {} -> {}: distance={:.2} nm, speed={:.1}", 
-            source_name, target_name, edge_weight.distance, edge_weight.speed);
+
+        println!(
+            "  {} -> {}: distance={:.2} nm, speed={:.1}",
+            source_name, target_name, edge_weight.distance, edge_weight.speed
+        );
     }
 }
