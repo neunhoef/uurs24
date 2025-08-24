@@ -20,7 +20,8 @@ uurs24/
 │   ├── boeien.csv      # Buoy definitions and coordinates
 │   ├── polars.csv      # Polar performance data
 │   ├── rakken.csv      # Course legs between buoys
-│   └── starts.csv      # Start line definitions
+│   ├── starts.csv      # Start line definitions
+│   └── wind.csv        # Wind conditions during the race
 ├── regatta_course.svg  # Generated course visualization
 └── src/
     ├── main.rs         # Main application logic and CLI
@@ -97,6 +98,13 @@ Start line definitions:
 - From and to buoy names
 - Distance in nautical miles
 
+### Wind Data (wind.csv)
+Wind conditions during the race:
+- Time in hours (0-24)
+- Wind speed in knots
+- Wind direction in degrees (angle FROM which wind is coming)
+- Supports interpolation between hours for continuous wind data
+
 ## Features in Detail
 
 ### Coordinate Parsing
@@ -109,6 +117,12 @@ Start line definitions:
 - Nodes represent buoys
 - Edges represent legs and start lines
 - Enables route analysis and optimization
+
+### Wind Data Management
+- Loads hourly wind conditions from CSV
+- Supports interpolation between hours for continuous data
+- Handles wind direction changes (including 0°/360° transitions)
+- Provides easy access to wind conditions at any time during the race
 
 ### Visualization
 - SVG output with configurable dimensions
@@ -155,6 +169,7 @@ The tool provides comprehensive output including:
 - Buoy count and types
 - Start line and leg information
 - Polar performance data tables
+- Wind conditions during the race (hourly data)
 - Graph statistics (nodes and edges)
 - Coordinate information for navigation
 

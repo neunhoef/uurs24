@@ -177,19 +177,21 @@ impl PolarData {
     }
 
     /// Get boat speed for a given true wind angle and wind speed
-    pub fn _get_boat_speed(&self, wind_angle: f64, wind_speed: f64) -> Option<f64> {
+    #[allow(dead_code)]
+    pub fn get_boat_speed(&self, wind_angle: f64, wind_speed: f64) -> Option<f64> {
         // Find the closest wind angle index
-        let angle_idx = self._find_closest_index(&self.wind_angles, wind_angle)?;
+        let angle_idx = self.find_closest_index(&self.wind_angles, wind_angle)?;
 
         // Find the closest wind speed index
-        let speed_idx = self._find_closest_index(&self.wind_speeds, wind_speed)?;
+        let speed_idx = self.find_closest_index(&self.wind_speeds, wind_speed)?;
 
         // Return the boat speed at this intersection
         self.boat_speeds.get(angle_idx)?.get(speed_idx).copied()
     }
 
     /// Find the index of the closest value in a sorted vector
-    fn _find_closest_index(&self, values: &[f64], target: f64) -> Option<usize> {
+    #[allow(dead_code)]
+    fn find_closest_index(&self, values: &[f64], target: f64) -> Option<usize> {
         if values.is_empty() {
             return None;
         }
@@ -209,6 +211,74 @@ impl PolarData {
     }
 }
 
+/// Represents wind conditions at a specific time
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WindCondition {
+    #[serde(rename = "Time")]
+    pub time: u32,
+    #[serde(rename = "Wind_speed")]
+    pub wind_speed: f64,
+    #[serde(rename = "Wind_angle")]
+    pub wind_angle: f64,
+}
+
+/// Represents wind data for the entire regatta duration
+#[derive(Debug, Clone)]
+pub struct WindData {
+    /// Wind conditions indexed by hour
+    pub conditions: Vec<WindCondition>,
+    /// Wind conditions by hour for quick lookup
+    pub conditions_by_hour: HashMap<u32, WindCondition>,
+}
+
+impl WindData {
+    /// Create a new empty WindData instance
+    pub fn new() -> Self {
+        Self {
+            conditions: Vec::new(),
+            conditions_by_hour: HashMap::new(),
+        }
+    }
+
+    /// Get wind conditions for a specific hour
+    pub fn get_wind_at_hour(&self, hour: u32) -> Option<&WindCondition> {
+        self.conditions_by_hour.get(&hour)
+    }
+
+    /// Get wind conditions for a specific time (interpolates between hours if needed)
+    pub fn get_wind_at_time(&self, time_hours: f64) -> Option<WindCondition> {
+        let hour = time_hours.floor() as u32;
+        let next_hour = hour + 1;
+        
+        let current = self.get_wind_at_hour(hour)?;
+        let next = self.get_wind_at_hour(next_hour);
+        
+        if let Some(next_condition) = next {
+            // Interpolate between hours
+            let fraction = time_hours - hour as f64;
+            let interpolated_speed = current.wind_speed + (next_condition.wind_speed - current.wind_speed) * fraction;
+            
+            // For wind angle, we need to handle the case where we cross 0°/360°
+            let angle_diff = (next_condition.wind_angle - current.wind_angle + 180.0) % 360.0 - 180.0;
+            let interpolated_angle = (current.wind_angle + angle_diff * fraction + 360.0) % 360.0;
+            
+            Some(WindCondition {
+                time: hour,
+                wind_speed: interpolated_speed,
+                wind_angle: interpolated_angle,
+            })
+        } else {
+            // No next hour data, return current hour
+            Some(current.clone())
+        }
+    }
+
+    /// Get all wind conditions
+    pub fn get_all_conditions(&self) -> &[WindCondition] {
+        &self.conditions
+    }
+}
+
 /// Main data structure containing all loaded data
 pub struct RegattaData {
     pub boeien: Vec<Boei>,
@@ -216,6 +286,7 @@ pub struct RegattaData {
     pub rakken: Vec<Rak>,
     pub boeien_by_name: HashMap<String, Boei>,
     pub polar_data: PolarData,
+    pub wind_data: WindData,
 }
 
 impl RegattaData {
@@ -227,6 +298,7 @@ impl RegattaData {
             rakken: Vec::new(),
             boeien_by_name: HashMap::new(),
             polar_data: PolarData::new(),
+            wind_data: WindData::new(),
         }
     }
 
@@ -256,6 +328,11 @@ impl RegattaData {
     /// Get polar data
     pub fn get_polar_data(&self) -> &PolarData {
         &self.polar_data
+    }
+
+    /// Get wind data
+    pub fn get_wind_data(&self) -> &WindData {
+        &self.wind_data
     }
 }
 
@@ -288,6 +365,9 @@ pub fn load_regatta_data() -> Result<RegattaData, Box<dyn Error>> {
 
     // Load polar data
     data.polar_data = load_polar_data()?;
+
+    // Load wind data
+    data.wind_data = load_wind_data()?;
 
     Ok(data)
 }
@@ -337,6 +417,42 @@ fn load_polar_data() -> Result<PolarData, Box<dyn Error>> {
     Ok(polar_data)
 }
 
+/// Load wind data from CSV file
+fn load_wind_data() -> Result<WindData, Box<dyn Error>> {
+    let mut wind_data = WindData::new();
+
+    // Read the CSV file manually since it has a specific format
+    let content = std::fs::read_to_string("data/wind.csv")?;
+    let lines: Vec<&str> = content.lines().collect();
+
+    if lines.is_empty() {
+        return Err("Empty wind data file".into());
+    }
+
+    // Parse the header line to get column names
+    let header_parts: Vec<&str> = lines[0].split(';').collect();
+    let time_idx = header_parts.iter().position(|&s| s == "Time").ok_or("Time column not found")?;
+    let wind_speed_idx = header_parts.iter().position(|&s| s == "Wind_speed").ok_or("Wind_speed column not found")?;
+    let wind_angle_idx = header_parts.iter().position(|&s| s == "Wind_angle").ok_or("Wind_angle column not found")?;
+
+    // Parse the data lines
+    for line in lines.iter().skip(1) {
+        let parts: Vec<&str> = line.split(';').collect();
+        if parts.len() < 3 {
+            continue; // Skip malformed lines
+        }
+
+        let time: u32 = parts[time_idx].parse()?;
+        let wind_speed: f64 = parts[wind_speed_idx].parse()?;
+        let wind_angle: f64 = parts[wind_angle_idx].parse()?;
+
+        wind_data.conditions.push(WindCondition { time, wind_speed, wind_angle });
+        wind_data.conditions_by_hour.insert(time, WindCondition { time, wind_speed, wind_angle });
+    }
+
+    Ok(wind_data)
+}
+
 /// Edge data for the regatta graph
 #[derive(Debug, Clone)]
 pub struct RegattaEdge {
@@ -351,7 +467,7 @@ pub struct RegattaEdge {
 /// - Starts: directed edges from start boeien to target boeien
 /// - Rakken: directed edges in both directions between boeien
 ///
-/// Returns a tuple of (graph, node_indices_by_name) where the HashMap
+/// Returns a tuple of (graph, node_indices) where the HashMap
 /// maps boei names to their NodeIndex in the graph.
 pub fn build_regatta_graph(
     data: &RegattaData,
@@ -435,6 +551,10 @@ mod tests {
             !data.polar_data.wind_speeds.is_empty(),
             "No polar data loaded"
         );
+        assert!(
+            !data.wind_data.conditions.is_empty(),
+            "No wind data loaded"
+        );
 
         // Test that we can find boeien by name
         let finish_boei = data.get_boei("FINISH");
@@ -510,10 +630,7 @@ mod tests {
             let parsed = result.unwrap();
             assert!(
                 (parsed - expected).abs() < 0.001,
-                "Parsing '{}' failed. Expected: {}, Got: {}",
-                input,
-                expected,
-                parsed
+                "Parsing '{input}' failed. Expected: {expected}, Got: {parsed}",
             );
         }
     }
@@ -545,6 +662,35 @@ mod tests {
         // coordinates() returns (latitude, longitude)
         assert!((coords.0 - (53.0 + 5.020 / 60.0)).abs() < 0.001); // latitude
         assert!((coords.1 - (5.0 + 20.293 / 60.0)).abs() < 0.001); // longitude
+    }
+
+    #[test]
+    fn test_wind_data_loading() {
+        let data = load_regatta_data().unwrap();
+        let wind_data = data.get_wind_data();
+
+        // Check that wind conditions are loaded correctly
+        assert!(!wind_data.conditions.is_empty(), "Wind conditions should be loaded");
+        assert_eq!(wind_data.conditions_by_hour.len(), wind_data.conditions.len());
+
+        // Check that we can get wind conditions by hour
+        let hour_0_wind = wind_data.get_wind_at_hour(0);
+        assert!(hour_0_wind.is_some(), "Should have wind data for hour 0");
+        if let Some(wind) = hour_0_wind {
+            assert_eq!(wind.time, 0);
+            assert_eq!(wind.wind_speed, 10.0); // From wind.csv
+            assert_eq!(wind.wind_angle, 180.0); // From wind.csv
+        }
+
+        // Check that we can get all conditions
+        let all_conditions = wind_data.get_all_conditions();
+        assert_eq!(all_conditions.len(), wind_data.conditions.len());
+
+        // Check that we can interpolate wind conditions (if we have multiple hours)
+        if wind_data.conditions.len() > 1 {
+            let interpolated_wind = wind_data.get_wind_at_time(0.5);
+            assert!(interpolated_wind.is_some(), "Should be able to interpolate wind data");
+        }
     }
 
     #[test]

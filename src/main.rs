@@ -120,7 +120,7 @@ fn show_regatta_data(data: &data::RegattaData) {
     // Print header row with wind speeds
     print!("TWA/TWS\t");
     for &wind_speed in &polar_data.wind_speeds {
-        print!("{:>6.0}kt\t", wind_speed);
+        print!("{wind_speed:>6.0}kt\t");
     }
     println!();
 
@@ -133,9 +133,9 @@ fn show_regatta_data(data: &data::RegattaData) {
 
     // Print each row with wind angle and boat speeds
     for (angle_idx, &wind_angle) in polar_data.wind_angles.iter().enumerate() {
-        print!("{:>6.0}°\t", wind_angle);
+        print!("{wind_angle:>6.0}°\t");
         for &boat_speed in &polar_data.boat_speeds[angle_idx] {
-            print!("{:>6.2}kt\t", boat_speed);
+            print!("{boat_speed:>6.2}kt\t");
         }
         println!();
     }
@@ -143,6 +143,42 @@ fn show_regatta_data(data: &data::RegattaData) {
     println!();
     println!("Note: TWA = True Wind Angle (0° = head to wind, 90° = beam reach, 180° = downwind)");
     println!("      Boat speeds are in knots (kt)");
+
+    // Show wind data
+    let wind_data = data.get_wind_data();
+    println!("\nWind Conditions During Race:");
+    println!("Time (hrs) | Wind Speed (kts) | Wind Direction (°)");
+    println!("-----------|------------------|-------------------");
+    for condition in wind_data.get_all_conditions() {
+        println!(
+            "     {:2}    |        {:5.1}      |        {:5.1}",
+            condition.time, condition.wind_speed, condition.wind_angle
+        );
+    }
+    println!();
+    println!("Note: Wind direction is the angle FROM which the wind is coming");
+    println!("      (180° = southerly wind, 0° = northerly wind)");
+
+    // Demonstrate wind interpolation
+    println!("\nWind Interpolation Examples:");
+    println!("Time (hrs) | Wind Speed (kts) | Wind Direction (°) | Notes");
+    println!("-----------|------------------|-------------------|-------");
+    
+    // Show some interpolated values
+    let test_times = vec![0.0, 0.5, 1.0, 1.5, 2.0, 23.5, 24.0];
+    for time in test_times {
+        if let Some(wind) = wind_data.get_wind_at_time(time) {
+            let notes = if time == time.floor() {
+                "Exact hour"
+            } else {
+                "Interpolated"
+            };
+            println!(
+                "     {:4.1}    |        {:5.1}      |        {:5.1}      | {}",
+                time, wind.wind_speed, wind.wind_angle, notes
+            );
+        }
+    }
 
     // Show buoys by type
     let start_boeien = data.get_boeien_by_type("Startboei");
