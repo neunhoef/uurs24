@@ -149,7 +149,7 @@ fn show_regatta_data(data: &data::RegattaData) {
     // Print separator line
     print!("--------");
     for _ in &polar_data.wind_speeds {
-        print!("!---------------");
+        print!("!--------------");
     }
     println!();
 
@@ -185,7 +185,7 @@ fn show_regatta_data(data: &data::RegattaData) {
     println!("\nWind Interpolation Examples:");
     println!("Time (hrs) | Wind Speed (kts) | Wind Direction (°) | Notes");
     println!("-----------|------------------|-------------------|-------");
-    
+
     // Show some interpolated values
     let test_times = vec![0.0, 0.5, 1.0, 1.5, 2.0, 23.5, 24.0];
     for time in test_times {
@@ -270,10 +270,13 @@ fn show_regatta_data(data: &data::RegattaData) {
 }
 
 /// Export the regatta graph to a DOT file for graphviz visualization
-fn export_regatta_graph(data: &data::RegattaData, output_path: &str) -> Result<(), Box<dyn std::error::Error>> {
+fn export_regatta_graph(
+    data: &data::RegattaData,
+    output_path: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
     // Build the regatta graph
     let (graph, node_indices) = build_regatta_graph(data);
-    
+
     // Create the DOT file content
     let mut dot_content = String::new();
     dot_content.push_str("digraph RegattaGraph {\n");
@@ -281,13 +284,13 @@ fn export_regatta_graph(data: &data::RegattaData, output_path: &str) -> Result<(
     dot_content.push_str("  rankdir=LR;\n");
     dot_content.push_str("  node [shape=box, style=filled, fillcolor=lightblue];\n");
     dot_content.push_str("  edge [fontsize=10];\n\n");
-    
+
     // Add nodes
     dot_content.push_str("  // Nodes (Buoys)\n");
     for (boei_name, &node_idx) in &node_indices {
         let node_weight = graph.node_weight(node_idx).unwrap();
         let node_type = node_weight.as_ref().map_or("Unknown", |s| s.as_str());
-        
+
         // Color nodes based on type
         let fillcolor = if node_type == "Startboei" {
             "lightgreen"
@@ -298,35 +301,43 @@ fn export_regatta_graph(data: &data::RegattaData, output_path: &str) -> Result<(
         } else {
             "lightblue"
         };
-        
-        dot_content.push_str(&format!("  \"{}\" [label=\"{}\\n({})\", fillcolor={}];\n", 
-            boei_name, boei_name, node_type, fillcolor));
+
+        dot_content.push_str(&format!(
+            "  \"{}\" [label=\"{}\\n({})\", fillcolor={}];\n",
+            boei_name, boei_name, node_type, fillcolor
+        ));
     }
-    
+
     dot_content.push_str("\n  // Edges (Starts and Legs)\n");
-    
+
     // Add edges for starts
     for start in data.get_starts() {
-        if let (Some(&_from_idx), Some(&_to_idx)) = 
-            (node_indices.get(&start.from), node_indices.get(&start.to)) {
-            dot_content.push_str(&format!("  \"{}\" -> \"{}\" [label=\"Start: {:.2}nm\", color=green, style=bold];\n",
-                start.from, start.to, start.distance));
+        if let (Some(&_from_idx), Some(&_to_idx)) =
+            (node_indices.get(&start.from), node_indices.get(&start.to))
+        {
+            dot_content.push_str(&format!(
+                "  \"{}\" -> \"{}\" [label=\"Start: {:.2}nm\", color=green, style=bold];\n",
+                start.from, start.to, start.distance
+            ));
         }
     }
-    
+
     // Add edges for rakken (legs)
     for rak in data.get_rakken() {
-        if let (Some(&_from_idx), Some(&_to_idx)) = 
-            (node_indices.get(&rak.from), node_indices.get(&rak.to)) {
-            dot_content.push_str(&format!("  \"{}\" -> \"{}\" [label=\"Leg: {:.2}nm\", color=blue];\n",
-                rak.from, rak.to, rak.distance));
+        if let (Some(&_from_idx), Some(&_to_idx)) =
+            (node_indices.get(&rak.from), node_indices.get(&rak.to))
+        {
+            dot_content.push_str(&format!(
+                "  \"{}\" -> \"{}\" [label=\"Leg: {:.2}nm\", color=blue];\n",
+                rak.from, rak.to, rak.distance
+            ));
         }
     }
-    
+
     dot_content.push_str("}\n");
-    
+
     // Write the DOT file
     std::fs::write(output_path, dot_content)?;
-    
+
     Ok(())
 }
