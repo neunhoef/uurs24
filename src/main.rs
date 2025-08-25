@@ -1,4 +1,5 @@
 mod data;
+mod optimize;
 mod plot;
 
 use clap::Command;
@@ -217,54 +218,31 @@ fn show_regatta_data(data: &data::RegattaData) {
 
     // Create the petgraph from the loaded data
     println!("\nBuilding regatta graph...");
-    let (graph, node_indices) = build_regatta_graph(data);
+    let (graph, _node_indices) = build_regatta_graph(data);
 
     println!("Graph created successfully:");
     println!("  - {} nodes (boeien)", graph.node_count());
     println!("  - {} edges (starts + rakken)", graph.edge_count());
 
-    // Show some example nodes and their types
+    // Show nodes and their types:
     println!("\nNodes in the graph:");
     for (i, node_weight) in graph.node_weights().enumerate() {
-        let node_idx = graph.node_indices().nth(i).unwrap();
-        let unknown_str = "Unknown".to_string();
-        let boei_name = node_indices
-            .iter()
-            .find(|(_, idx)| **idx == node_idx)
-            .map(|(name, _)| name)
-            .unwrap_or(&unknown_str);
-
+        let boei = &data.boeien[i];
         let no_type_str = "No type".to_string();
         let node_type = node_weight.as_ref().unwrap_or(&no_type_str);
-        println!(
-            "  {}: {} (type: {})",
-            node_idx.index(),
-            boei_name,
-            node_type
-        );
+        println!("  {}: {} (type: {})", i, boei.name, node_type);
     }
 
-    // Show some example edges with their properties
+    // Show edges with their properties:
     println!("\nEdges in the graph:");
     for edge_idx in graph.edge_indices() {
         let (source, target) = graph.edge_endpoints(edge_idx).unwrap();
+        let sname = &data.boeien[source.index()].name[..];
+        let tname = &data.boeien[target.index()].name[..];
         let edge_weight = graph.edge_weight(edge_idx).unwrap();
-
-        let unknown_str = "Unknown".to_string();
-        let source_name = node_indices
-            .iter()
-            .find(|(_, idx)| **idx == source)
-            .map(|(name, _)| name)
-            .unwrap_or(&unknown_str);
-        let target_name = node_indices
-            .iter()
-            .find(|(_, idx)| **idx == target)
-            .map(|(name, _)| name)
-            .unwrap_or(&unknown_str);
-
         println!(
             "  {} -> {}: distance={:.2} nm, speed={:.1}",
-            source_name, target_name, edge_weight.distance, edge_weight.speed
+            sname, tname, edge_weight.distance, edge_weight.speed
         );
     }
 }

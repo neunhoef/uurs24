@@ -249,19 +249,21 @@ impl WindData {
     pub fn get_wind_at_time(&self, time_hours: f64) -> Option<WindCondition> {
         let hour = time_hours.floor() as u32;
         let next_hour = hour + 1;
-        
+
         let current = self.get_wind_at_hour(hour)?;
         let next = self.get_wind_at_hour(next_hour);
-        
+
         if let Some(next_condition) = next {
             // Interpolate between hours
             let fraction = time_hours - hour as f64;
-            let interpolated_speed = current.wind_speed + (next_condition.wind_speed - current.wind_speed) * fraction;
-            
+            let interpolated_speed =
+                current.wind_speed + (next_condition.wind_speed - current.wind_speed) * fraction;
+
             // For wind angle, we need to handle the case where we cross 0°/360°
-            let angle_diff = (next_condition.wind_angle - current.wind_angle + 180.0) % 360.0 - 180.0;
+            let angle_diff =
+                (next_condition.wind_angle - current.wind_angle + 180.0) % 360.0 - 180.0;
             let interpolated_angle = (current.wind_angle + angle_diff * fraction + 360.0) % 360.0;
-            
+
             Some(WindCondition {
                 time: hour,
                 wind_speed: interpolated_speed,
@@ -431,9 +433,18 @@ fn load_wind_data() -> Result<WindData, Box<dyn Error>> {
 
     // Parse the header line to get column names
     let header_parts: Vec<&str> = lines[0].split(';').collect();
-    let time_idx = header_parts.iter().position(|&s| s == "Time").ok_or("Time column not found")?;
-    let wind_speed_idx = header_parts.iter().position(|&s| s == "Wind_speed").ok_or("Wind_speed column not found")?;
-    let wind_angle_idx = header_parts.iter().position(|&s| s == "Wind_angle").ok_or("Wind_angle column not found")?;
+    let time_idx = header_parts
+        .iter()
+        .position(|&s| s == "Time")
+        .ok_or("Time column not found")?;
+    let wind_speed_idx = header_parts
+        .iter()
+        .position(|&s| s == "Wind_speed")
+        .ok_or("Wind_speed column not found")?;
+    let wind_angle_idx = header_parts
+        .iter()
+        .position(|&s| s == "Wind_angle")
+        .ok_or("Wind_angle column not found")?;
 
     // Parse the data lines
     for line in lines.iter().skip(1) {
@@ -446,8 +457,19 @@ fn load_wind_data() -> Result<WindData, Box<dyn Error>> {
         let wind_speed: f64 = parts[wind_speed_idx].parse()?;
         let wind_angle: f64 = parts[wind_angle_idx].parse()?;
 
-        wind_data.conditions.push(WindCondition { time, wind_speed, wind_angle });
-        wind_data.conditions_by_hour.insert(time, WindCondition { time, wind_speed, wind_angle });
+        wind_data.conditions.push(WindCondition {
+            time,
+            wind_speed,
+            wind_angle,
+        });
+        wind_data.conditions_by_hour.insert(
+            time,
+            WindCondition {
+                time,
+                wind_speed,
+                wind_angle,
+            },
+        );
     }
 
     Ok(wind_data)
@@ -479,8 +501,11 @@ pub fn build_regatta_graph(
     let mut node_indices = HashMap::new();
 
     // Add all boeien as nodes
-    for boei in &data.boeien {
+    for (i, boei) in data.boeien.iter().enumerate() {
         let node_idx = graph.add_node(boei.buoy_type.clone());
+        if node_idx.index() != i {
+            panic!("Node index ({}) != Boei index ({})!", node_idx.index(), i);
+        }
         node_indices.insert(boei.name.clone(), node_idx);
     }
 
@@ -551,10 +576,7 @@ mod tests {
             !data.polar_data.wind_speeds.is_empty(),
             "No polar data loaded"
         );
-        assert!(
-            !data.wind_data.conditions.is_empty(),
-            "No wind data loaded"
-        );
+        assert!(!data.wind_data.conditions.is_empty(), "No wind data loaded");
 
         // Test that we can find boeien by name
         let finish_boei = data.get_boei("FINISH");
@@ -670,8 +692,14 @@ mod tests {
         let wind_data = data.get_wind_data();
 
         // Check that wind conditions are loaded correctly
-        assert!(!wind_data.conditions.is_empty(), "Wind conditions should be loaded");
-        assert_eq!(wind_data.conditions_by_hour.len(), wind_data.conditions.len());
+        assert!(
+            !wind_data.conditions.is_empty(),
+            "Wind conditions should be loaded"
+        );
+        assert_eq!(
+            wind_data.conditions_by_hour.len(),
+            wind_data.conditions.len()
+        );
 
         // Check that we can get wind conditions by hour
         let hour_0_wind = wind_data.get_wind_at_hour(0);
@@ -689,7 +717,10 @@ mod tests {
         // Check that we can interpolate wind conditions (if we have multiple hours)
         if wind_data.conditions.len() > 1 {
             let interpolated_wind = wind_data.get_wind_at_time(0.5);
-            assert!(interpolated_wind.is_some(), "Should be able to interpolate wind data");
+            assert!(
+                interpolated_wind.is_some(),
+                "Should be able to interpolate wind data"
+            );
         }
     }
 
