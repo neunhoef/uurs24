@@ -70,7 +70,7 @@ fn main() {
         Some(("graph", graph_matches)) => {
             let output_path = graph_matches.get_one::<String>("output").unwrap();
             match export_regatta_graph(&data, output_path) {
-                Ok(()) => println!("Successfully exported graph to DOT file: {}", output_path),
+                Ok(()) => println!("Successfully exported graph to DOT file: {output_path}"),
                 Err(e) => {
                     eprintln!("Error exporting graph to DOT file: {e}");
                     std::process::exit(1);
@@ -241,8 +241,13 @@ fn show_regatta_data(data: &data::RegattaData) {
         let tname = &data.boeien[target.index()].name[..];
         let edge_weight = graph.edge_weight(edge_idx).unwrap();
         println!(
-            "  {} -> {}: distance={:.2} nm, speed={:.1}",
-            sname, tname, edge_weight.distance, edge_weight.speed
+            "  {} -> {}: distance={:.2} nm, is_start={}, forwards={}, index={}",
+            sname,
+            tname,
+            edge_weight.distance,
+            edge_weight.is_start,
+            edge_weight.forwards,
+            edge_weight.index,
         );
     }
 }
@@ -281,8 +286,7 @@ fn export_regatta_graph(
         };
 
         dot_content.push_str(&format!(
-            "  \"{}\" [label=\"{}\\n({})\", fillcolor={}];\n",
-            boei_name, boei_name, node_type, fillcolor
+            "  \"{boei_name}\" [label=\"{boei_name}\\n({node_type})\", fillcolor={fillcolor}];\n",
         ));
     }
 

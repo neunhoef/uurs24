@@ -178,36 +178,45 @@ impl PolarData {
 
     /// Get boat speed for a given true wind angle and wind speed
     #[allow(dead_code)]
-    pub fn get_boat_speed(&self, wind_angle: f64, wind_speed: f64) -> Option<f64> {
-        // Find the closest wind angle index
-        let angle_idx = self.find_closest_index(&self.wind_angles, wind_angle)?;
-
-        // Find the closest wind speed index
-        let speed_idx = self.find_closest_index(&self.wind_speeds, wind_speed)?;
-
-        // Return the boat speed at this intersection
-        self.boat_speeds.get(angle_idx)?.get(speed_idx).copied()
-    }
-
-    /// Find the index of the closest value in a sorted vector
-    #[allow(dead_code)]
-    fn find_closest_index(&self, values: &[f64], target: f64) -> Option<usize> {
-        if values.is_empty() {
-            return None;
-        }
-
-        let mut closest_idx = 0;
-        let mut closest_diff = (values[0] - target).abs();
-
-        for (idx, &value) in values.iter().enumerate() {
-            let diff = (value - target).abs();
-            if diff < closest_diff {
-                closest_diff = diff;
-                closest_idx = idx;
+    pub fn get_boat_speed(&self, wind_angle: f64, wind_speed: f64) -> f64 {
+        // Find the last row in the polar wind angle table which is smaller than the wind_angle:
+        let mut left: usize = 0;
+        let mut right: usize = self.wind_angles.len();
+        // Invariants: left angle <= bearing_relative < right angle, right <= length
+        while right - left > 1 {
+            let mid = (left + right) / 2; // left < mid < right
+            if self.wind_angles[mid] > wind_angle {
+                right = mid;
+            } else {
+                left = mid
             }
         }
+        // Now right = left + 1 and the invariants still hold, so left is the last which is <=
+        let angle_index = left;
 
-        Some(closest_idx)
+        // Find the last row in the polar wind speed table which is smaller than the current wind:
+        left = 0;
+        right = self.wind_speeds.len();
+        // Invariants: left speed <= wind_speed < right speed, right <= length
+        while right - left > 1 {
+            let mid = (left + right) / 2; // left < mid < right
+            if self.wind_speeds[mid] > wind_speed {
+                right = mid;
+            } else {
+                left = mid
+            }
+        }
+        // Now right = left + 1 and the invariants still hold, so left is the last which is <=
+        let windspeed_index = left;
+
+        // Return the boat speed at this intersection, but distinguish if we have to beat:
+        if angle_index > 0 {
+            return self.boat_speeds[angle_index][windspeed_index];
+        }
+        // If we have to beat, we need to take the speed at index 1:
+        let sail_speed = self.boat_speeds[1][windspeed_index];
+
+        sail_speed * (self.wind_angles[1] - wind_angle).cos()
     }
 }
 
@@ -479,7 +488,10 @@ fn load_wind_data() -> Result<WindData, Box<dyn Error>> {
 #[derive(Debug, Clone)]
 pub struct RegattaEdge {
     pub distance: f64,
-    pub speed: f64,
+    pub index: usize,
+    pub is_start: bool, // does this come from a start edge (true)
+    // or from a leg (false)
+    pub forwards: bool, // if it is a leg, we indicate forwards or backwards
 }
 
 /// Build a directed graph from the regatta data
@@ -510,7 +522,7 @@ pub fn build_regatta_graph(
     }
 
     // Add edges for starts (from start boeien to target boeien)
-    for start in &data.starts {
+    for (i, start) in data.starts.iter().enumerate() {
         if let (Some(&from_idx), Some(&to_idx)) =
             (node_indices.get(&start.from), node_indices.get(&start.to))
         {
@@ -519,14 +531,16 @@ pub fn build_regatta_graph(
                 to_idx,
                 RegattaEdge {
                     distance: start.distance,
-                    speed: 0.0, // Speed is set to 0 for now as requested
+                    index: i,
+                    is_start: true,
+                    forwards: true,
                 },
             );
         }
     }
 
     // Add edges for rakken (in both directions)
-    for rak in &data.rakken {
+    for (i, rak) in data.rakken.iter().enumerate() {
         if let (Some(&from_idx), Some(&to_idx)) =
             (node_indices.get(&rak.from), node_indices.get(&rak.to))
         {
@@ -536,7 +550,9 @@ pub fn build_regatta_graph(
                 to_idx,
                 RegattaEdge {
                     distance: rak.distance,
-                    speed: 0.0, // Speed is set to 0 for now as requested
+                    index: i,
+                    is_start: false,
+                    forwards: true,
                 },
             );
 
@@ -546,7 +562,9 @@ pub fn build_regatta_graph(
                 from_idx,
                 RegattaEdge {
                     distance: rak.distance,
-                    speed: 0.0, // Speed is set to 0 for now as requested
+                    index: i,
+                    is_start: false,
+                    forwards: false,
                 },
             );
         }
@@ -761,7 +779,6 @@ mod tests {
                 edge_weight.distance > 0.0,
                 "Edge distance should be positive"
             );
-            assert_eq!(edge_weight.speed, 0.0, "Edge speed should be 0.0 for now");
         }
     }
 
