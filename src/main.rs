@@ -12,7 +12,6 @@ fn main() {
         .version("1.0")
         .subcommand_negates_reqs(true)
         .subcommand(Command::new("show").about("Show regatta data and statistics"))
-        .subcommand(Command::new("nop").about("Do nothing (placeholder command)"))
         .subcommand(
             Command::new("plot")
                 .about("Generate SVG visualization of the regatta course")
@@ -53,9 +52,6 @@ fn main() {
     match matches.subcommand() {
         Some(("show", _)) => {
             show_regatta_data(&data);
-        }
-        Some(("nop", _)) => {
-            // Do nothing as requested
         }
         Some(("plot", plot_matches)) => {
             let output_path = plot_matches.get_one::<String>("output").unwrap();
