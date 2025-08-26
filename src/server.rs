@@ -3,8 +3,34 @@ use serde_json::json;
 use serde::Deserialize;
 use crate::data::RegattaData;
 use crate::optimize::estimate_leg_performance;
+use tera::{Tera, Context};
+use std::sync::Arc;
+use warp::reply::html;
 
 pub async fn start_server(data: RegattaData, port: u16) -> Result<(), Box<dyn std::error::Error>> {
+    // Initialize Tera templates
+    let tera = match Tera::new("templates/**/*") {
+        Ok(t) => Arc::new(t),
+        Err(e) => {
+            eprintln!("Failed to initialize Tera templates: {}", e);
+            return Err("Template initialization failed".into());
+        }
+    };
+
+    // Main page route
+    let index_route = warp::path::end()
+        .and(with_tera(tera.clone()))
+        .and(with_data(data.clone()))
+        .and_then(handle_index);
+
+    // Estimate form page route
+    let estimate_form_route = warp::path("estimate")
+        .and(warp::path::end())
+        .and(warp::get())
+        .and(with_tera(tera.clone()))
+        .and(with_data(data.clone()))
+        .and_then(handle_estimate_form);
+
     // Version endpoint
     let version_route = warp::path("version")
         .and(warp::get())
@@ -26,24 +52,29 @@ pub async fn start_server(data: RegattaData, port: u16) -> Result<(), Box<dyn st
             warp::reply::json(&response)
         });
 
-    // Estimate leg performance endpoint
-    let estimate_route = warp::path("estimate")
+    // Estimate leg performance API endpoint
+    let estimate_api_route = warp::path("api")
+        .and(warp::path("estimate"))
         .and(warp::get())
         .and(warp::query::<EstimateQuery>())
         .and(with_data(data.clone()))
         .and_then(handle_estimate);
 
-    // Combine all routes
-    let routes = version_route
+    // Combine all routes - API routes must come before page routes to avoid conflicts
+    let routes = index_route
+        .or(estimate_form_route)
+        .or(version_route)
         .or(health_route)
-        .or(estimate_route)
+        .or(estimate_api_route)
         .with(warp::cors().allow_any_origin());
 
     println!("Starting HTTP server on http://127.0.0.1:{}", port);
     println!("Available endpoints:");
-    println!("  GET /version  - Get program version");
-    println!("  GET /health   - Health check");
-    println!("  GET /estimate - Estimate leg performance (query params: from, to, time)");
+    println!("  GET /              - Main menu");
+    println!("  GET /estimate      - Estimate form");
+    println!("  GET /version       - Get program version");
+    println!("  GET /health        - Health check");
+    println!("  GET /api/estimate?from=X&to=Y&time=Z - Estimate leg performance");
 
     // Start the server
     warp::serve(routes)
@@ -61,9 +92,52 @@ struct EstimateQuery {
     time: f64,
 }
 
+// Helper function to inject Tera into route handlers
+fn with_tera(tera: Arc<Tera>) -> impl Filter<Extract = (Arc<Tera>,), Error = std::convert::Infallible> + Clone {
+    warp::any().map(move || tera.clone())
+}
+
 // Helper function to inject data into route handlers
 fn with_data(data: RegattaData) -> impl Filter<Extract = (RegattaData,), Error = std::convert::Infallible> + Clone {
     warp::any().map(move || data.clone())
+}
+
+// Handler for the main index page
+async fn handle_index(
+    tera: Arc<Tera>,
+    data: RegattaData,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let mut context = Context::new();
+    let rendered_html = tera.render("index.html", &context)
+        .map_err(|e| {
+            eprintln!("Template rendering error: {}", e);
+            warp::reject::custom(TemplateError)
+        })?;
+    
+    Ok(html(rendered_html))
+}
+
+// Handler for the estimate form page
+async fn handle_estimate_form(
+    tera: Arc<Tera>,
+    data: RegattaData,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let mut context = Context::new();
+    
+    // Get boeien names for the dropdown
+    let boeien: Vec<String> = data.boeien.iter()
+        .map(|boei| boei.name.clone())
+        .collect();
+    
+    context.insert("boeien", &boeien);
+    
+    let rendered_html = tera.render("estimate.html", &context)
+        .map_err(|e| {
+            eprintln!("Template rendering error: {}", e);
+            warp::reject::custom(TemplateError)
+        })?;
+    
+    Ok(html(rendered_html))
 }
 
 // Handler for the estimate endpoint
@@ -120,3 +194,9 @@ async fn handle_estimate(
 
     Ok(warp::reply::json(&response))
 }
+
+// Custom error type for template rendering
+#[derive(Debug)]
+struct TemplateError;
+
+impl warp::reject::Reject for TemplateError {}
