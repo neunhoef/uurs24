@@ -7,6 +7,7 @@ A Rust-based command-line tool for managing and visualizing 24-hour regatta data
 - **Data Management**: Load and parse regatta data from CSV files
 - **Course Visualization**: Generate SVG plots of the regatta course
 - **Performance Analysis**: Display polar performance data for different wind conditions
+- **Performance Estimation**: Estimate boat performance between buoys based on wind conditions and polar data
 - **Graph Representation**: Build and analyze regatta course as a directed graph
 - **Coordinate Handling**: Parse European coordinate formats (degrees, minutes, seconds)
 
@@ -26,6 +27,7 @@ uurs24/
 └── src/
     ├── main.rs         # Main application logic and CLI
     ├── data.rs         # Data structures and parsing
+    ├── optimize.rs     # Performance estimation and optimization algorithms
     └── plot.rs         # SVG visualization generation
 ```
 
@@ -62,12 +64,21 @@ cargo install --path .
 # Generate SVG visualization of the regatta course
 ./target/release/uurs24 plot
 ./target/release/uurs24 plot -o my_course.svg
+
+# Export regatta graph to DOT file for graphviz
+./target/release/uurs24 graph
+./target/release/uurs24 graph -o my_graph.dot
+
+# Estimate boat performance between two buoys
+./target/release/uurs24 estimate OEVE WV12 2.0
 ```
 
 ### Command Line Options
 
 - `show`: Display comprehensive regatta data including buoys, start lines, legs, and polar data
 - `plot`: Generate SVG visualization with optional output file specification
+- `graph`: Export the regatta graph to a DOT file for graphviz visualization
+- `estimate`: Estimate boat performance between two buoys at a specific time
 
 ## Data Format
 
@@ -119,6 +130,20 @@ Wind conditions during the race:
 - Supports interpolation between hours for continuous data
 - Handles wind direction changes (including 0°/360° transitions)
 - Provides easy access to wind conditions at any time during the race
+- Robust fallback handling for missing wind data hours
+
+### Performance Estimation
+- Estimates boat speed between any two buoys based on:
+  - Course bearing calculation from coordinates
+  - Wind conditions at specific race times
+  - Polar performance data interpolation
+  - Relative wind angle calculations
+- Provides comprehensive output including:
+  - Estimated boat speed in knots
+  - Course bearing and wind direction
+  - Relative bearing to wind
+  - Wind speed and sailing interpretation
+- Handles edge cases like beating (sailing into the wind) with appropriate speed reduction
 
 ### Visualization
 - SVG output with configurable dimensions
@@ -156,6 +181,7 @@ cargo clippy
 
 - **`src/main.rs`**: CLI interface and main application logic
 - **`src/data.rs`**: Data structures, CSV parsing, and graph building
+- **`src/optimize.rs`**: Performance estimation algorithms and optimization
 - **`src/plot.rs`**: SVG visualization generation and coordinate mapping
 
 ## Example Output
@@ -168,6 +194,29 @@ The tool provides comprehensive output including:
 - Wind conditions during the race (hourly data)
 - Graph statistics (nodes and edges)
 - Coordinate information for navigation
+
+### Performance Estimation Example
+
+```bash
+$ ./target/release/uurs24 estimate OEVE WV12 2.0
+
+Leg Performance Estimate:
+  From: OEVE (Startboei)
+  To:   WV12 (Markeerboei)
+  Time: 2.0 hours after race start
+
+Results:
+  Estimated Speed: 3.76 knots
+  Course Bearing:  130.9°
+  Wind Direction:  180.0°
+  Relative Bearing: 49.1°
+  Wind Speed:      10.0 knots
+
+Interpretation:
+  Sailing on a close reach
+```
+
+This shows how the tool estimates boat performance between buoys OEVE and WV12 at 2 hours into the race, taking into account the course bearing, wind conditions, and polar performance data.
 
 ## License
 

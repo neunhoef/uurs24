@@ -15,12 +15,22 @@ pub struct Path {
     pub edges_used: Vec<u8>, // always length of number of edges
 }
 
-pub fn estimate_speed(
+/// Detailed performance estimation for a leg between two buoys
+pub struct LegPerformance {
+    pub estimated_speed: f64,      // in knots
+    pub course_bearing: f64,       // bearing of the course in degrees
+    pub wind_direction: f64,       // wind direction in degrees
+    pub relative_bearing: f64,     // bearing relative to wind in degrees
+    pub wind_speed: f64,           // wind speed in knots
+}
+
+/// Estimate the performance for a leg between two buoys at a specific time
+pub fn estimate_leg_performance(
     data: &RegattaData,
     from: usize, // index of vertex in graph resp. Boei in data
     to: usize,   // index of vertex in graph resp. Boei in data
     time: f64,
-) -> f64 {
+) -> LegPerformance {
     // We proceed as follows:
     //  - compute the initial bearing of the edge
     //  - lookup the wind estimate for the given time
@@ -36,21 +46,51 @@ pub fn estimate_speed(
     let t_lat = target.lat.unwrap() * std::f64::consts::PI / 180.0;
     let t_lon = target.long.unwrap() * std::f64::consts::PI / 180.0;
     let d_lon = t_lon - s_lon;
-    let bearing = (d_lon.sin() * t_lat.cos())
+    let course_bearing = (d_lon.sin() * t_lat.cos())
         .atan2(s_lat.cos() * t_lat.sin() - s_lat.sin() * t_lat.cos() * d_lon.cos())
         * 180.0
         / std::f64::consts::PI;
 
+    // Normalize bearing to 0-360 range
+    let course_bearing = (course_bearing + 360.0) % 360.0;
+
     // Lookup the wind estimate for the given time:
-    let hour: u32 = time.floor().clamp(0.0, 24.0) as u32;
-    let wind = data.wind_data.get_wind_at_hour(hour).unwrap();
+    let wind = data.wind_data.get_wind_at_time(time)
+        .unwrap_or_else(|| {
+            // Fallback: use the closest available hour
+            let hour = time.floor().clamp(0.0, 24.0) as u32;
+            data.wind_data.get_wind_at_hour(hour)
+                .or_else(|| data.wind_data.get_wind_at_hour(0)) // Final fallback to hour 0
+                .unwrap()
+                .clone()
+        });
+    let wind_direction = wind.wind_angle;
+    let wind_speed = wind.wind_speed;
 
     // Compute the bearing in relation to the wind:
-    let mut bearing_relative = (wind.wind_angle - bearing).abs(); // -360 < bearing_relative < 360
-    if bearing_relative > 180.0 {
-        bearing_relative = 360.0 - bearing_relative;
+    let mut relative_bearing = (wind_direction - course_bearing).abs(); // -360 < relative_bearing < 360
+    if relative_bearing > 180.0 {
+        relative_bearing = 360.0 - relative_bearing;
     }
 
-    data.polar_data
-        .get_boat_speed(bearing_relative, wind.wind_speed)
+    let estimated_speed = data.polar_data
+        .get_boat_speed(relative_bearing, wind_speed);
+
+    LegPerformance {
+        estimated_speed,
+        course_bearing,
+        wind_direction,
+        relative_bearing,
+        wind_speed,
+    }
+}
+
+/// Legacy function for backward compatibility
+pub fn estimate_speed(
+    data: &RegattaData,
+    from: usize,
+    to: usize,
+    time: f64,
+) -> f64 {
+    estimate_leg_performance(data, from, to, time).estimated_speed
 }

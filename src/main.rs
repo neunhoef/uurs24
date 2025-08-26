@@ -4,6 +4,7 @@ mod plot;
 
 use clap::Command;
 use data::{build_regatta_graph, load_regatta_data};
+use optimize::estimate_leg_performance;
 use plot::save_regatta_plot;
 
 fn main() {
@@ -34,6 +35,25 @@ fn main() {
                         .value_name("FILE")
                         .help("Output DOT file path (default: regatta_graph.dot)")
                         .default_value("regatta_graph.dot"),
+                ),
+        )
+        .subcommand(
+            Command::new("estimate")
+                .about("Estimate boat performance between two buoys at a specific time")
+                .arg(
+                    clap::Arg::new("from")
+                        .help("Name of the starting buoy")
+                        .required(true),
+                )
+                .arg(
+                    clap::Arg::new("to")
+                        .help("Name of the destination buoy")
+                        .required(true),
+                )
+                .arg(
+                    clap::Arg::new("time")
+                        .help("Time in hours after race start")
+                        .required(true),
                 ),
         )
         .get_matches();
@@ -69,6 +89,27 @@ fn main() {
                 Ok(()) => println!("Successfully exported graph to DOT file: {output_path}"),
                 Err(e) => {
                     eprintln!("Error exporting graph to DOT file: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(("estimate", estimate_matches)) => {
+            let from_name = estimate_matches.get_one::<String>("from").unwrap();
+            let to_name = estimate_matches.get_one::<String>("to").unwrap();
+            let time_str = estimate_matches.get_one::<String>("time").unwrap();
+            
+            match time_str.parse::<f64>() {
+                Ok(time) => {
+                    match estimate_leg_performance_command(&data, from_name, to_name, time) {
+                        Ok(()) => {},
+                        Err(e) => {
+                            eprintln!("Error estimating leg performance: {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                Err(_) => {
+                    eprintln!("Error: time must be a valid number");
                     std::process::exit(1);
                 }
             }
@@ -246,6 +287,64 @@ fn show_regatta_data(data: &data::RegattaData) {
             edge_weight.index,
         );
     }
+}
+
+/// Estimate leg performance between two buoys at a specific time
+fn estimate_leg_performance_command(
+    data: &data::RegattaData,
+    from_name: &str,
+    to_name: &str,
+    time: f64,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Find the buoys by name
+    let from_boei = data.get_boei(from_name)
+        .ok_or_else(|| format!("Buoy '{}' not found", from_name))?;
+    let to_boei = data.get_boei(to_name)
+        .ok_or_else(|| format!("Buoy '{}' not found", to_name))?;
+    
+    // Get the indices of the buoys
+    let from_index = data.get_boei_index(from_name)
+        .ok_or_else(|| format!("Buoy '{}' not found in index", from_name))?;
+    let to_index = data.get_boei_index(to_name)
+        .ok_or_else(|| format!("Buoy '{}' not found in index", to_name))?;
+    
+    // Check if both buoys have coordinates
+    if !from_boei.has_coordinates() || !to_boei.has_coordinates() {
+        return Err("Both buoys must have valid coordinates".into());
+    }
+    
+    // Estimate the leg performance
+    let performance = estimate_leg_performance(data, from_index, to_index, time);
+    
+    // Print the results
+    println!("Leg Performance Estimate:");
+    println!("  From: {} ({})", from_name, from_boei.buoy_type.as_ref().unwrap_or(&"Unknown".to_string()));
+    println!("  To:   {} ({})", to_name, to_boei.buoy_type.as_ref().unwrap_or(&"Unknown".to_string()));
+    println!("  Time: {:.1} hours after race start", time);
+    println!();
+    println!("Results:");
+    println!("  Estimated Speed: {:.2} knots", performance.estimated_speed);
+    println!("  Course Bearing:  {:.1}°", performance.course_bearing);
+    println!("  Wind Direction:  {:.1}°", performance.wind_direction);
+    println!("  Relative Bearing: {:.1}°", performance.relative_bearing);
+    println!("  Wind Speed:      {:.1} knots", performance.wind_speed);
+    
+    // Add some interpretation
+    println!();
+    println!("Interpretation:");
+    if performance.relative_bearing < 45.0 {
+        println!("  Sailing close-hauled (into the wind)");
+    } else if performance.relative_bearing < 90.0 {
+        println!("  Sailing on a close reach");
+    } else if performance.relative_bearing < 135.0 {
+        println!("  Sailing on a beam reach");
+    } else if performance.relative_bearing < 180.0 {
+        println!("  Sailing on a broad reach");
+    } else {
+        println!("  Sailing downwind");
+    }
+    
+    Ok(())
 }
 
 /// Export the regatta graph to a DOT file for graphviz visualization

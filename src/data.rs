@@ -213,10 +213,16 @@ impl PolarData {
         if angle_index > 0 {
             return self.boat_speeds[angle_index][windspeed_index];
         }
-        // If we have to beat, we need to take the speed at index 1:
+        
+        // If we're at angle_index == 0, we're very close to head-to-wind
+        // Use the speed at index 1 (52°) but apply a reduction factor for beating
         let sail_speed = self.boat_speeds[1][windspeed_index];
-
-        sail_speed * (self.wind_angles[1] - wind_angle).cos()
+        
+        // Apply a reduction factor for beating - the closer to 0°, the slower
+        // Use a cosine-based reduction that goes to 0 at 0° and 1 at the first available angle
+        let reduction_factor = (wind_angle / self.wind_angles[1]).cos();
+        
+        sail_speed * reduction_factor.max(0.0)
     }
 }
 
@@ -316,6 +322,11 @@ impl RegattaData {
     /// Get a buoy by name
     pub fn get_boei(&self, name: &str) -> Option<&Boei> {
         self.boeien_by_name.get(name)
+    }
+
+    /// Get the index of a buoy by name
+    pub fn get_boei_index(&self, name: &str) -> Option<usize> {
+        self.boeien.iter().position(|b| b.name == name)
     }
 
     /// Get all buoys of a specific type
@@ -802,17 +813,14 @@ mod tests {
         // Check some specific values from the CSV
         // At 52° TWA and 6 knots wind: should be 4.72 knots
         let speed = polar_data.get_boat_speed(52.0, 6.0);
-        assert!(speed.is_some());
-        assert!((speed.unwrap() - 4.72).abs() < 0.01);
+        assert!((speed - 4.72).abs() < 0.01);
 
         // At 90° TWA and 10 knots wind: should be 7.19 knots
         let speed = polar_data.get_boat_speed(90.0, 10.0);
-        assert!(speed.is_some());
-        assert!((speed.unwrap() - 7.19).abs() < 0.01);
+        assert!((speed - 7.19).abs() < 0.01);
 
         // At 135° TWA and 20 knots wind: should be 8.83 knots
         let speed = polar_data.get_boat_speed(135.0, 20.0);
-        assert!(speed.is_some());
-        assert!((speed.unwrap() - 8.83).abs() < 0.01);
+        assert!((speed - 8.83).abs() < 0.01);
     }
 }
