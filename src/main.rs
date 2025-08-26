@@ -1,13 +1,15 @@
 mod data;
 mod optimize;
 mod plot;
+mod server;
 
 use clap::Command;
 use data::{build_regatta_graph, load_regatta_data};
 use optimize::estimate_leg_performance;
 use plot::save_regatta_plot;
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let matches = Command::new("uurs24")
         .about("24-hour regatta data management tool")
         .version("1.0")
@@ -54,6 +56,18 @@ fn main() {
                     clap::Arg::new("time")
                         .help("Time in hours after race start")
                         .required(true),
+                ),
+        )
+        .subcommand(
+            Command::new("serve")
+                .about("Start HTTP server to serve regatta data")
+                .arg(
+                    clap::Arg::new("port")
+                        .short('p')
+                        .long("port")
+                        .value_name("PORT")
+                        .help("Port to bind the server to (default: 3030)")
+                        .default_value("3030"),
                 ),
         )
         .get_matches();
@@ -110,6 +124,22 @@ fn main() {
                 }
                 Err(_) => {
                     eprintln!("Error: time must be a valid number");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(("serve", serve_matches)) => {
+            let port_str = serve_matches.get_one::<String>("port").unwrap();
+            match port_str.parse::<u16>() {
+                Ok(port) => {
+                    println!("Starting HTTP server on port {}...", port);
+                    if let Err(e) = server::start_server(data, port).await {
+                        eprintln!("Error starting server: {e}");
+                        std::process::exit(1);
+                    }
+                }
+                Err(_) => {
+                    eprintln!("Error: port must be a valid number between 1 and 65535");
                     std::process::exit(1);
                 }
             }

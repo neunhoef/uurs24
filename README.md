@@ -71,6 +71,10 @@ cargo install --path .
 
 # Estimate boat performance between two buoys
 ./target/release/uurs24 estimate OEVE WV12 2.0
+
+# Start HTTP server to serve regatta data
+./target/release/uurs24 serve
+./target/release/uurs24 serve --port 8080
 ```
 
 ### Command Line Options
@@ -79,6 +83,30 @@ cargo install --path .
 - `plot`: Generate SVG visualization with optional output file specification
 - `graph`: Export the regatta graph to a DOT file for graphviz visualization
 - `estimate`: Estimate boat performance between two buoys at a specific time
+- `serve`: Start HTTP server to serve regatta data via REST API
+
+## HTTP Server API
+
+The `serve` subcommand starts an HTTP server that provides REST API endpoints for accessing regatta data.
+
+### Starting the Server
+
+```bash
+# Start server on default port 3030
+./target/release/uurs24 serve
+
+# Start server on custom port
+./target/release/uurs24 serve --port 8080
+```
+
+### Available Endpoints
+
+- `GET /version` - Get program version information
+  - Response: `{"version": "0.1.0"}`
+- `GET /health` - Health check endpoint
+  - Response: `{"status": "ok", "timestamp": "2025-08-26T21:50:52.063599926+00:00"}`
+
+The server runs on `127.0.0.1` and supports CORS for cross-origin requests.
 
 ## Data Format
 
