@@ -62,16 +62,12 @@ cargo install --path .
 # Generate SVG visualization of the regatta course
 ./target/release/uurs24 plot
 ./target/release/uurs24 plot -o my_course.svg
-
-# Do nothing (placeholder command)
-./target/release/uurs24 nop
 ```
 
 ### Command Line Options
 
 - `show`: Display comprehensive regatta data including buoys, start lines, legs, and polar data
 - `plot`: Generate SVG visualization with optional output file specification
-- `nop`: Placeholder command that does nothing
 
 ## Data Format
 
