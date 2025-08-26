@@ -297,6 +297,7 @@ impl WindData {
 }
 
 /// Main data structure containing all loaded data
+#[derive(Clone)]
 pub struct RegattaData {
     pub boeien: Vec<Boei>,
     pub starts: Vec<Start>,
