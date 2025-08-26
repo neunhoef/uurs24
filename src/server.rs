@@ -68,7 +68,7 @@ pub async fn start_server(data: RegattaData, port: u16) -> Result<(), Box<dyn st
         .or(estimate_api_route)
         .with(warp::cors().allow_any_origin());
 
-    println!("Starting HTTP server on http://127.0.0.1:{}", port);
+    println!("Starting HTTP server on http://0.0.0.0:{} (all interfaces)", port);
     println!("Available endpoints:");
     println!("  GET /              - Main menu");
     println!("  GET /estimate      - Estimate form");
@@ -78,7 +78,7 @@ pub async fn start_server(data: RegattaData, port: u16) -> Result<(), Box<dyn st
 
     // Start the server
     warp::serve(routes)
-        .run(([127, 0, 0, 1], port))
+        .run(([0, 0, 0, 0], port))
         .await;
 
     Ok(())
