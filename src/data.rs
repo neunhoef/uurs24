@@ -220,7 +220,7 @@ impl PolarData {
         
         // Apply a reduction factor for beating - the closer to 0°, the slower
         // Use a cosine-based reduction that goes to 0 at 0° and 1 at the first available angle
-        let reduction_factor = (wind_angle / self.wind_angles[1]).cos();
+        let reduction_factor = (self.wind_angles[1] - wind_angle).to_radians().cos();
         
         sail_speed * reduction_factor.max(0.0)
     }
