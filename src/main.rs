@@ -5,7 +5,7 @@ mod server;
 
 use clap::Command;
 use data::{build_regatta_graph, load_regatta_data};
-use optimize::estimate_leg_performance;
+use optimize::{estimate_leg_performance, explore_paths};
 use plot::save_regatta_plot;
 
 #[tokio::main]
@@ -68,6 +68,25 @@ async fn main() {
                         .value_name("PORT")
                         .help("Port to bind the server to (default: 3030)")
                         .default_value("3030"),
+                ),
+        )
+        .subcommand(
+            Command::new("paths")
+                .about("Explore all possible paths from a starting point")
+                .arg(
+                    clap::Arg::new("start")
+                        .help("Name of the starting buoy")
+                        .required(true),
+                )
+                .arg(
+                    clap::Arg::new("time")
+                        .help("Starting time in hours after race start")
+                        .required(true),
+                )
+                .arg(
+                    clap::Arg::new("steps")
+                        .help("Number of steps to explore")
+                        .required(true),
                 ),
         )
         .get_matches();
@@ -140,6 +159,31 @@ async fn main() {
                 }
                 Err(_) => {
                     eprintln!("Error: port must be a valid number between 1 and 65535");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(("paths", paths_matches)) => {
+            let start_name = paths_matches.get_one::<String>("start").unwrap();
+            let time_str = paths_matches.get_one::<String>("time").unwrap();
+            let steps_str = paths_matches.get_one::<String>("steps").unwrap();
+            
+            match (time_str.parse::<f64>(), steps_str.parse::<usize>()) {
+                (Ok(time), Ok(steps)) => {
+                    match explore_paths_command(&data, start_name, time, steps) {
+                        Ok(()) => {},
+                        Err(e) => {
+                            eprintln!("Error exploring paths: {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                (Err(_), _) => {
+                    eprintln!("Error: time must be a valid number");
+                    std::process::exit(1);
+                }
+                (_, Err(_)) => {
+                    eprintln!("Error: steps must be a valid positive integer");
                     std::process::exit(1);
                 }
             }
@@ -394,6 +438,84 @@ fn estimate_leg_performance_command(
         println!("  Sailing on a broad reach");
     } else {
         println!("  Sailing downwind");
+    }
+    
+    Ok(())
+}
+
+/// Explore all possible paths from a starting buoy
+fn explore_paths_command(
+    data: &data::RegattaData,
+    start_name: &str,
+    start_time: f64,
+    num_steps: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Find the starting buoy by name
+    let start_boei = data.get_boei(start_name)
+        .ok_or_else(|| format!("Starting buoy '{}' not found", start_name))?;
+    
+    // Get the index of the starting buoy
+    let start_index = data.get_boei_index(start_name)
+        .ok_or_else(|| format!("Starting buoy '{}' not found in index", start_name))?;
+    
+    println!("Exploring paths from: {} ({})", 
+        start_name, 
+        start_boei.buoy_type.as_ref().unwrap_or(&"Unknown".to_string())
+    );
+    println!("Starting time: {:.1} hours after race start", start_time);
+    println!("Number of steps: {}", num_steps);
+    println!();
+    
+    // Explore all possible paths
+    let paths = explore_paths(data, start_index, start_time, num_steps)?;
+    
+    if paths.is_empty() {
+        println!("No paths found from this starting point.");
+        return Ok(());
+    }
+    
+    println!("Found {} possible path(s):", paths.len());
+    println!();
+    
+    // Sort paths by end time for better readability
+    let mut sorted_paths = paths;
+    sorted_paths.sort_by(|a, b| a.end_time.partial_cmp(&b.end_time).unwrap_or(std::cmp::Ordering::Equal));
+    
+    // Print each path
+    for (i, path) in sorted_paths.iter().enumerate() {
+        println!("Path {} (Total: {:.2} nm, End time: {:.2} hours):", 
+            i + 1, path.total_distance, path.end_time);
+        
+        // Print each step in the path
+        for (j, step) in path.steps.iter().enumerate() {
+            let from_name = &data.boeien[step.from].name;
+            let to_name = &data.boeien[step.to].name;
+            
+            println!("  Step {}: {} -> {} ({:.2} nm, {:.2} kts, {:.2}h -> {:.2}h)", 
+                j + 1,
+                from_name,
+                to_name,
+                step.distance,
+                step.speed,
+                step.start_time,
+                step.end_time
+            );
+        }
+        println!();
+    }
+    
+    // Print summary statistics
+    if !sorted_paths.is_empty() {
+        let fastest_path = &sorted_paths[0];
+        let slowest_path = &sorted_paths[sorted_paths.len() - 1];
+        let avg_end_time: f64 = sorted_paths.iter().map(|p| p.end_time).sum::<f64>() / sorted_paths.len() as f64;
+        let avg_distance: f64 = sorted_paths.iter().map(|p| p.total_distance).sum::<f64>() / sorted_paths.len() as f64;
+        
+        println!("Summary:");
+        println!("  Fastest path: {:.2} hours", fastest_path.end_time);
+        println!("  Slowest path: {:.2} hours", slowest_path.end_time);
+        println!("  Average end time: {:.2} hours", avg_end_time);
+        println!("  Average distance: {:.2} nm", avg_distance);
     }
     
     Ok(())
