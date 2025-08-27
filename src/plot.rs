@@ -81,13 +81,11 @@ fn create_coordinate_grid(
     config: &PlotConfig,
 ) -> Group {
     let (min_lat, max_lat, min_long, max_long) = bounds;
-    println!("Grid bounds: lat {:.4}-{:.4}, long {:.4}-{:.4}", min_lat, max_lat, min_long, max_long);
     let mut grid_group = Group::new()
         .set("id", "coordinate-grid")
         .set("opacity", "0.3");
     
     if !config.show_grid {
-        println!("Grid disabled in create_coordinate_grid");
         return grid_group;
     }
     
@@ -97,16 +95,10 @@ fn create_coordinate_grid(
     let start_long = (min_long / config.grid_interval).floor() * config.grid_interval;
     let end_long = (max_long / config.grid_interval).ceil() * config.grid_interval;
     
-    println!("Grid calculation: lat {:.4}-{:.4}, long {:.4}-{:.4}, interval {}", 
-             start_lat, end_lat, start_long, end_long, config.grid_interval);
-    
     // Draw vertical lines for longitudes
     let mut current_long = start_long;
-    let mut longitude_count = 0;
     while current_long <= end_long {
         if current_long >= min_long && current_long <= max_long {
-            longitude_count += 1;
-            println!("Adding longitude line at {:.4}°E", current_long);
             let (x, _) = geo_to_svg(min_lat, current_long, bounds, config);
             
             // Vertical line
@@ -132,7 +124,6 @@ fn create_coordinate_grid(
         }
         current_long += config.grid_interval;
     }
-    println!("Created {} longitude lines", longitude_count);
     
     // Draw horizontal lines for latitudes
     let mut current_lat = start_lat;
@@ -204,12 +195,8 @@ pub fn create_regatta_plot(data: &RegattaData, config: PlotConfig) -> Result<Str
     
     // Add coordinate grid first (as background)
     if config.show_grid {
-        println!("Creating coordinate grid with bounds: {:?}", bounds);
         let grid_group = create_coordinate_grid(bounds, &config);
-        println!("Grid group created");
         document = document.add(grid_group);
-    } else {
-        println!("Grid is disabled in config");
     }
     
     // Create main group

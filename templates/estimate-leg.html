@@ -1,0 +1,157 @@
+{% extends "base.html" %}
+
+{% block title %}24 Uurs Zeilrace - Estimate Leg Speed{% endblock %}
+
+{% block content %}
+<h2 style="text-align: center; margin-bottom: 40px; color: #2c3e50; font-size: 2rem;">Estimate Leg Speed</h2>
+
+<form id="estimateForm">
+    <div class="form-group">
+        <label for="leg">Select Leg:</label>
+        <select id="leg" name="leg" required>
+            <option value="">Select a leg...</option>
+            {% for leg in legs %}
+            <option value="{{ leg.from }}|{{ leg.to }}">{{ leg.from }} → {{ leg.to }} ({{ leg.distance }} nm)</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="reverse">
+            <input type="checkbox" id="reverse" name="reverse" style="margin-right: 10px; transform: scale(1.3);">
+            Reverse Direction
+        </label>
+    </div>
+
+    <div class="form-group">
+        <label for="time">Time (hours):</label>
+        <input type="number" id="time" name="time" step="0.1" min="0" required placeholder="Enter time in hours">
+    </div>
+
+    <div style="margin-top: 30px;">
+        <button type="submit" class="btn">Submit</button>
+        <a href="/" class="btn btn-secondary">Back</a>
+    </div>
+</form>
+
+<div class="loading" id="loading">
+    Calculating leg performance estimate... ⚓
+</div>
+
+<div class="error" id="error"></div>
+
+<div class="result" id="result">
+    <h3>Leg Performance Estimate</h3>
+    <div class="result-grid">
+        <div class="result-item">
+            <strong>From:</strong>
+            <span id="result-from"></span>
+        </div>
+        <div class="result-item">
+            <strong>To:</strong>
+            <span id="result-to"></span>
+        </div>
+        <div class="result-item">
+            <strong>Time:</strong>
+            <span id="result-time"></span>
+        </div>
+        <div class="result-item">
+            <strong>Estimated Speed:</strong>
+            <span id="result-speed"></span>
+        </div>
+        <div class="result-item">
+            <strong>Course Bearing:</strong>
+            <span id="result-bearing"></span>
+        </div>
+        <div class="result-item">
+            <strong>Wind Direction:</strong>
+            <span id="result-wind-dir"></span>
+        </div>
+        <div class="result-item">
+            <strong>Relative Bearing:</strong>
+            <span id="result-relative"></span>
+        </div>
+        <div class="result-item">
+            <strong>Wind Speed:</strong>
+            <span id="result-wind-speed"></span>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('estimateForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const legValue = document.getElementById('leg').value;
+    const reverse = document.getElementById('reverse').checked;
+    const time = parseFloat(document.getElementById('time').value);
+    
+    if (!legValue || isNaN(time) || time < 0) {
+        showError('Please fill in all fields with valid values.');
+        return;
+    }
+    
+    // Parse the leg value to get from and to
+    const [from, to] = legValue.split('|');
+    
+    // Show loading, hide other elements
+    showLoading();
+    hideError();
+    hideResult();
+    
+    try {
+        const response = await fetch(`/api/estimateleg?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&reverse=${reverse}&time=${time}`);
+        const data = await response.json();
+        
+        if (response.ok) {
+            displayResult(data);
+        } else {
+            showError(data.message || 'An error occurred while estimating leg performance.');
+        }
+    } catch (error) {
+        showError('Network error: Could not connect to the server.');
+    } finally {
+        hideLoading();
+    }
+});
+
+function showLoading() {
+    document.getElementById('loading').style.display = 'block';
+}
+
+function hideLoading() {
+    document.getElementById('loading').style.display = 'none';
+}
+
+function showError(message) {
+    const errorDiv = document.getElementById('error');
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+}
+
+function hideError() {
+    document.getElementById('error').style.display = 'none';
+}
+
+function showResult() {
+    document.getElementById('result').style.display = 'block';
+}
+
+function hideResult() {
+    document.getElementById('result').style.display = 'none';
+}
+
+function displayResult(data) {
+    document.getElementById('result-from').textContent = data.from;
+    document.getElementById('result-to').textContent = data.to;
+    document.getElementById('result-time').textContent = `${data.time} hours`;
+    document.getElementById('result-speed').textContent = `${data.estimated_speed.toFixed(2)} knots`;
+    document.getElementById('result-bearing').textContent = `${data.course_bearing.toFixed(1)}°`;
+    document.getElementById('result-wind-dir').textContent = `${data.wind_direction.toFixed(1)}°`;
+    document.getElementById('result-relative').textContent = `${data.relative_bearing.toFixed(1)}°`;
+    document.getElementById('result-wind-speed').textContent = `${data.wind_speed.toFixed(1)} knots`;
+    
+    showResult();
+}
+</script>
+{% endblock %}
