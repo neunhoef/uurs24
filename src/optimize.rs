@@ -5,17 +5,25 @@ use petgraph::visit::EdgeRef;
 pub struct Step {
     pub from: usize,
     pub to: usize,
-    pub edge: usize,
     pub distance: f64,   // in nm
     pub speed: f64,      // in knots, estimated by wind and bearing
     pub start_time: f64, // in hours since race start
     pub end_time: f64,   // in hours since race start
 }
 
+/// Internal state for path exploration
+struct PathExplorationState {
+    current_point: usize,
+    current_time: f64,
+    remaining_steps: usize,
+    current_steps: Vec<Step>,
+    edges_used: Vec<u8>,
+    total_distance: f64,
+}
+
 #[derive(Clone)]
 pub struct Path {
     pub steps: Vec<Step>,
-    pub edges_used: Vec<u8>, // always length of number of edges
     pub total_distance: f64, // total distance in nm
     pub end_time: f64,       // end time in hours
 }
@@ -90,15 +98,7 @@ pub fn estimate_leg_performance(
     }
 }
 
-/// Legacy function for backward compatibility
-pub fn estimate_speed(
-    data: &RegattaData,
-    from: usize,
-    to: usize,
-    time: f64,
-) -> f64 {
-    estimate_leg_performance(data, from, to, time).estimated_speed
-}
+
 
 /// Explore all possible paths from a starting point with a given number of steps
 pub fn explore_paths(
@@ -111,24 +111,23 @@ pub fn explore_paths(
     let (graph, _node_indices) = build_regatta_graph(data);
     
     if start_point >= data.boeien.len() {
-        return Err(format!("Invalid start point index: {}", start_point).into());
+        return Err(format!("Invalid start point index: {start_point}").into());
     }
     
     let mut all_paths = Vec::new();
     let initial_edges_used = vec![0u8; data.starts.len() + data.rakken.len()];
     
     // Start the recursive exploration
-    explore_paths_recursive(
-        data,
-        &graph,
-        start_point,
-        start_time,
-        num_steps,
-        Vec::new(),
-        initial_edges_used,
-        0.0, // initial total distance
-        &mut all_paths,
-    )?;
+    let initial_state = PathExplorationState {
+        current_point: start_point,
+        current_time: start_time,
+        remaining_steps: num_steps,
+        current_steps: Vec::new(),
+        edges_used: initial_edges_used,
+        total_distance: 0.0,
+    };
+    
+    explore_paths_recursive(data, &graph, initial_state, &mut all_paths)?;
     
     Ok(all_paths)
 }
@@ -137,27 +136,21 @@ pub fn explore_paths(
 fn explore_paths_recursive(
     data: &RegattaData,
     graph: &petgraph::Graph<Option<String>, crate::data::RegattaEdge>,
-    current_point: usize,
-    current_time: f64,
-    remaining_steps: usize,
-    current_steps: Vec<Step>,
-    edges_used: Vec<u8>,
-    total_distance: f64,
+    state: PathExplorationState,
     all_paths: &mut Vec<Path>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // If no steps remaining, save the current path
-    if remaining_steps == 0 {
+    if state.remaining_steps == 0 {
         all_paths.push(Path {
-            steps: current_steps,
-            edges_used,
-            total_distance,
-            end_time: current_time,
+            steps: state.current_steps,
+            total_distance: state.total_distance,
+            end_time: state.current_time,
         });
         return Ok(());
     }
     
     // Convert current_point to NodeIndex
-    let current_node = petgraph::graph::NodeIndex::new(current_point);
+    let current_node = petgraph::graph::NodeIndex::new(state.current_point);
     
     // Explore all neighbors
     for edge_ref in graph.edges(current_node) {
@@ -180,12 +173,12 @@ fn explore_paths_recursive(
             data.rakken[edge_weight.index].max_number
         };
         
-        if edges_used[edge_index] >= max_usage as u8 {
+        if state.edges_used[edge_index] >= max_usage as u8 {
             continue; // Skip this edge if it's been used too many times
         }
         
         // Estimate performance for this leg
-        let performance = estimate_leg_performance(data, current_point, target_point, current_time);
+        let performance = estimate_leg_performance(data, state.current_point, target_point, state.current_time);
         let speed = performance.estimated_speed;
         let distance = edge_weight.distance;
         
@@ -197,38 +190,37 @@ fn explore_paths_recursive(
             distance / 1.0 // 1 knot as fallback
         };
         
-        let end_time = current_time + travel_time;
+        let end_time = state.current_time + travel_time;
         
         // Create the step
         let step = Step {
-            from: current_point,
+            from: state.current_point,
             to: target_point,
-            edge: edge_index,
             distance,
             speed,
-            start_time: current_time,
+            start_time: state.current_time,
             end_time,
         };
         
         // Update the path and edge usage
-        let mut new_steps = current_steps.clone();
+        let mut new_steps = state.current_steps.clone();
         new_steps.push(step);
         
-        let mut new_edges_used = edges_used.clone();
+        let mut new_edges_used = state.edges_used.clone();
         new_edges_used[edge_index] += 1;
         
+        // Create new state for recursive call
+        let new_state = PathExplorationState {
+            current_point: target_point,
+            current_time: end_time,
+            remaining_steps: state.remaining_steps - 1,
+            current_steps: new_steps,
+            edges_used: new_edges_used,
+            total_distance: state.total_distance + distance,
+        };
+        
         // Continue exploring recursively
-        explore_paths_recursive(
-            data,
-            graph,
-            target_point,
-            end_time,
-            remaining_steps - 1,
-            new_steps,
-            new_edges_used,
-            total_distance + distance,
-            all_paths,
-        )?;
+        explore_paths_recursive(data, graph, new_state, all_paths)?;
     }
     
     Ok(())

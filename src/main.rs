@@ -151,7 +151,7 @@ async fn main() {
             let port_str = serve_matches.get_one::<String>("port").unwrap();
             match port_str.parse::<u16>() {
                 Ok(port) => {
-                    println!("Starting HTTP server on port {}...", port);
+                    println!("Starting HTTP server on port {port}...");
                     if let Err(e) = server::start_server(data, port).await {
                         eprintln!("Error starting server: {e}");
                         std::process::exit(1);
@@ -237,7 +237,7 @@ fn show_regatta_data(data: &data::RegattaData) {
     for boei in &data.boeien {
         if boei.has_coordinates() {
             if let Some((lat, long)) = boei.coordinates() {
-                let buoy_type_str = boei.buoy_type.as_ref().map(|t| format!(" ({})", t)).unwrap_or_default();
+                let buoy_type_str = boei.buoy_type.as_ref().map(|t| format!(" ({t})")).unwrap_or_default();
                 println!("  {}{} - {:.6}°N, {:.6}°E", boei.name, buoy_type_str, lat, long);
                 buoys_with_coords += 1;
             }
@@ -247,9 +247,9 @@ fn show_regatta_data(data: &data::RegattaData) {
     }
     
     if buoys_without_coords > 0 {
-        println!("  Note: {} boeien have no coordinate data", buoys_without_coords);
+        println!("  Note: {buoys_without_coords} boeien have no coordinate data");
     }
-    println!("  Total: {} boeien with coordinates, {} without", buoys_with_coords, buoys_without_coords);
+    println!("  Total: {buoys_with_coords} boeien with coordinates, {buoys_without_coords} without");
 
     // Show start lines
     println!("\nStart lines:");
@@ -394,15 +394,15 @@ fn estimate_leg_performance_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Find the buoys by name
     let from_boei = data.get_boei(from_name)
-        .ok_or_else(|| format!("Buoy '{}' not found", from_name))?;
+        .ok_or_else(|| format!("Buoy '{from_name}' not found"))?;
     let to_boei = data.get_boei(to_name)
-        .ok_or_else(|| format!("Buoy '{}' not found", to_name))?;
+        .ok_or_else(|| format!("Buoy '{to_name}' not found"))?;
     
     // Get the indices of the buoys
     let from_index = data.get_boei_index(from_name)
-        .ok_or_else(|| format!("Buoy '{}' not found in index", from_name))?;
+        .ok_or_else(|| format!("Buoy '{from_name}' not found in index"))?;
     let to_index = data.get_boei_index(to_name)
-        .ok_or_else(|| format!("Buoy '{}' not found in index", to_name))?;
+        .ok_or_else(|| format!("Buoy '{to_name}' not found in index"))?;
     
     // Check if both buoys have coordinates
     if !from_boei.has_coordinates() || !to_boei.has_coordinates() {
@@ -416,7 +416,7 @@ fn estimate_leg_performance_command(
     println!("Leg Performance Estimate:");
     println!("  From: {} ({})", from_name, from_boei.buoy_type.as_ref().unwrap_or(&"Unknown".to_string()));
     println!("  To:   {} ({})", to_name, to_boei.buoy_type.as_ref().unwrap_or(&"Unknown".to_string()));
-    println!("  Time: {:.1} hours after race start", time);
+    println!("  Time: {time:.1} hours after race start");
     println!();
     println!("Results:");
     println!("  Estimated Speed: {:.2} knots", performance.estimated_speed);
@@ -452,18 +452,18 @@ fn explore_paths_command(
 ) -> Result<(), Box<dyn std::error::Error>> {
     // Find the starting buoy by name
     let start_boei = data.get_boei(start_name)
-        .ok_or_else(|| format!("Starting buoy '{}' not found", start_name))?;
+        .ok_or_else(|| format!("Starting buoy '{start_name}' not found"))?;
     
     // Get the index of the starting buoy
     let start_index = data.get_boei_index(start_name)
-        .ok_or_else(|| format!("Starting buoy '{}' not found in index", start_name))?;
+        .ok_or_else(|| format!("Starting buoy '{start_name}' not found in index"))?;
     
     println!("Exploring paths from: {} ({})", 
         start_name, 
         start_boei.buoy_type.as_ref().unwrap_or(&"Unknown".to_string())
     );
-    println!("Starting time: {:.1} hours after race start", start_time);
-    println!("Number of steps: {}", num_steps);
+    println!("Starting time: {start_time:.1} hours after race start");
+    println!("Number of steps: {num_steps}");
     println!();
     
     // Explore all possible paths
@@ -514,8 +514,8 @@ fn explore_paths_command(
         println!("Summary:");
         println!("  Fastest path: {:.2} hours", fastest_path.end_time);
         println!("  Slowest path: {:.2} hours", slowest_path.end_time);
-        println!("  Average end time: {:.2} hours", avg_end_time);
-        println!("  Average distance: {:.2} nm", avg_distance);
+        println!("  Average end time: {avg_end_time:.2} hours");
+        println!("  Average distance: {avg_distance:.2} nm");
     }
     
     Ok(())
@@ -595,21 +595,21 @@ fn export_regatta_graph(
     let pdf_output = "regatta_graph.pdf";
     
     let output = std::process::Command::new("dot")
-        .args(&["-Tpdf", output_path, "-o", pdf_output])
+        .args(["-Tpdf", output_path, "-o", pdf_output])
         .output();
     
     match output {
         Ok(output) => {
             if output.status.success() {
-                println!("Successfully generated PDF: {}", pdf_output);
+                println!("Successfully generated PDF: {pdf_output}");
             } else {
                 let stderr = String::from_utf8_lossy(&output.stderr);
-                eprintln!("Warning: Failed to generate PDF: {}", stderr);
+                eprintln!("Warning: Failed to generate PDF: {stderr}");
                 eprintln!("Note: Make sure 'dot' (graphviz) is installed on your system");
             }
         }
         Err(e) => {
-            eprintln!("Warning: Could not execute 'dot' command: {}", e);
+            eprintln!("Warning: Could not execute 'dot' command: {e}");
             eprintln!("Note: Make sure 'dot' (graphviz) is installed on your system");
         }
     }

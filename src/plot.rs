@@ -113,7 +113,7 @@ fn create_coordinate_grid(
             grid_group = grid_group.add(line);
             
             // Longitude label at top
-            let label = Text::new(format!("{:.1}°E", current_long))
+            let label = Text::new(format!("{current_long:.1}°E"))
                 .set("x", x)
                 .set("y", 12)
                 .set("text-anchor", "middle")
@@ -143,7 +143,7 @@ fn create_coordinate_grid(
             grid_group = grid_group.add(line);
             
             // Latitude label at left
-            let label = Text::new(format!("{:.1}°N", current_lat))
+            let label = Text::new(format!("{current_lat:.1}°N"))
                 .set("x", 5)
                 .set("y", y + 4.0) // Offset to center text on line
                 .set("text-anchor", "start")

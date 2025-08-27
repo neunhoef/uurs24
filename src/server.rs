@@ -12,7 +12,7 @@ pub async fn start_server(data: RegattaData, port: u16) -> Result<(), Box<dyn st
     let tera = match Tera::new("templates/**/*") {
         Ok(t) => Arc::new(t),
         Err(e) => {
-            eprintln!("Failed to initialize Tera templates: {}", e);
+            eprintln!("Failed to initialize Tera templates: {e}");
             return Err("Template initialization failed".into());
         }
     };
@@ -97,8 +97,7 @@ pub async fn start_server(data: RegattaData, port: u16) -> Result<(), Box<dyn st
         .with(warp::cors().allow_any_origin());
 
     println!(
-        "Starting HTTP server on http://0.0.0.0:{} (all interfaces)",
-        port
+        "Starting HTTP server on http://0.0.0.0:{port} (all interfaces)"
     );
     println!("Available endpoints:");
     println!("  GET /              - Main menu");
@@ -155,7 +154,7 @@ async fn handle_index(
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let context = Context::new();
     let rendered_html = tera.render("index.html", &context).map_err(|e| {
-        eprintln!("Template rendering error: {}", e);
+        eprintln!("Template rendering error: {e}");
         warp::reject::custom(TemplateError)
     })?;
 
@@ -175,7 +174,7 @@ async fn handle_estimate_form(
     context.insert("boeien", &boeien);
 
     let rendered_html = tera.render("estimate.html", &context).map_err(|e| {
-        eprintln!("Template rendering error: {}", e);
+        eprintln!("Template rendering error: {e}");
         warp::reject::custom(TemplateError)
     })?;
 
@@ -208,7 +207,7 @@ async fn handle_estimate_leg_form(
     context.insert("legs", &legs_for_template);
 
     let rendered_html = tera.render("estimate-leg.html", &context).map_err(|e| {
-        eprintln!("Template rendering error: {:?}", e);
+        eprintln!("Template rendering error: {e:?}");
         warp::reject::custom(TemplateError)
     })?;
 
