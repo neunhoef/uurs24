@@ -10,6 +10,8 @@ pub struct PlotConfig {
     pub buoy_size: f64,
     pub text_size: f64,
     pub line_width: f64,
+    pub show_grid: bool,
+    pub grid_interval: f64, // Grid interval in degrees
 }
 
 impl Default for PlotConfig {
@@ -21,6 +23,8 @@ impl Default for PlotConfig {
             buoy_size: 4.0,
             text_size: 12.0,
             line_width: 2.0,
+            show_grid: true,
+            grid_interval: 0.1, // 0.1 degrees
         }
     }
 }
@@ -71,6 +75,89 @@ fn geo_to_svg(
     (x, y)
 }
 
+/// Create a coordinate grid with latitude and longitude lines
+fn create_coordinate_grid(
+    bounds: (f64, f64, f64, f64),
+    config: &PlotConfig,
+) -> Group {
+    let (min_lat, max_lat, min_long, max_long) = bounds;
+    let mut grid_group = Group::new()
+        .set("id", "coordinate-grid")
+        .set("opacity", "0.3");
+    
+    if !config.show_grid {
+        return grid_group;
+    }
+    
+    // Calculate the grid lines to draw
+    let start_lat = (min_lat / config.grid_interval).floor() * config.grid_interval;
+    let end_lat = (max_lat / config.grid_interval).ceil() * config.grid_interval;
+    let start_long = (min_long / config.grid_interval).floor() * config.grid_interval;
+    let end_long = (max_long / config.grid_interval).ceil() * config.grid_interval;
+    
+    // Draw vertical lines for longitudes
+    let mut current_long = start_long;
+    while current_long <= end_long {
+        if current_long >= min_long && current_long <= max_long {
+            let (x, _) = geo_to_svg(min_lat, current_long, bounds, config);
+            
+            // Vertical line
+            let line = Line::new()
+                .set("x1", x)
+                .set("y1", 0)
+                .set("x2", x)
+                .set("y2", config.height)
+                .set("stroke", "#666")
+                .set("stroke-width", "0.5");
+            
+            grid_group = grid_group.add(line);
+            
+            // Longitude label at top
+            let label = Text::new(format!("{:.1}°E", current_long))
+                .set("x", x)
+                .set("y", 12)
+                .set("text-anchor", "middle")
+                .set("font-size", "10")
+                .set("fill", "#666");
+            
+            grid_group = grid_group.add(label);
+        }
+        current_long += config.grid_interval;
+    }
+    
+    // Draw horizontal lines for latitudes
+    let mut current_lat = start_lat;
+    while current_lat <= end_lat {
+        if current_lat >= min_lat && current_lat <= max_lat {
+            let (_, y) = geo_to_svg(current_lat, min_long, bounds, config);
+            
+            // Horizontal line
+            let line = Line::new()
+                .set("x1", 0)
+                .set("y1", y)
+                .set("x2", config.width)
+                .set("y2", y)
+                .set("stroke", "#666")
+                .set("stroke-width", "0.5");
+            
+            grid_group = grid_group.add(line);
+            
+            // Latitude label at left
+            let label = Text::new(format!("{:.1}°N", current_lat))
+                .set("x", 5)
+                .set("y", y + 4.0) // Offset to center text on line
+                .set("text-anchor", "start")
+                .set("font-size", "10")
+                .set("fill", "#666");
+            
+            grid_group = grid_group.add(label);
+        }
+        current_lat += config.grid_interval;
+    }
+    
+    grid_group
+}
+
 /// Create an SVG visualization of the regatta data
 pub fn create_regatta_plot(data: &RegattaData, config: PlotConfig) -> Result<String, Box<dyn std::error::Error>> {
     // Calculate bounding box
@@ -105,6 +192,12 @@ pub fn create_regatta_plot(data: &RegattaData, config: PlotConfig) -> Result<Str
     
     defs = defs.add(green_arrow);
     document = document.add(defs);
+    
+    // Add coordinate grid first (as background)
+    if config.show_grid {
+        let grid_group = create_coordinate_grid(bounds, &config);
+        document = document.add(grid_group);
+    }
     
     // Create main group
     let mut main_group = Group::new();
