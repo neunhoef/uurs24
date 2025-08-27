@@ -60,18 +60,26 @@ pub async fn start_server(data: RegattaData, port: u16) -> Result<(), Box<dyn st
         .and(with_data(data.clone()))
         .and_then(handle_estimate);
 
+    // PDF file serving route
+    let pdf_route = warp::path("regatta-graph.pdf")
+        .and(warp::path::end())
+        .and(warp::get())
+        .and_then(handle_pdf);
+
     // Combine all routes - API routes must come before page routes to avoid conflicts
     let routes = index_route
         .or(estimate_form_route)
         .or(version_route)
         .or(health_route)
         .or(estimate_api_route)
+        .or(pdf_route)
         .with(warp::cors().allow_any_origin());
 
     println!("Starting HTTP server on http://0.0.0.0:{} (all interfaces)", port);
     println!("Available endpoints:");
     println!("  GET /              - Main menu");
     println!("  GET /estimate      - Estimate form");
+    println!("  GET /regatta-graph.pdf - Show regatta graph as PDF");
     println!("  GET /version       - Get program version");
     println!("  GET /health        - Health check");
     println!("  GET /api/estimate?from=X&to=Y&time=Z - Estimate leg performance");
@@ -193,6 +201,39 @@ async fn handle_estimate(
     });
 
     Ok(warp::reply::json(&response))
+}
+
+// Handler for serving the PDF file
+async fn handle_pdf() -> Result<Box<dyn warp::Reply>, warp::Rejection> {
+    // Check if the PDF file exists
+    if !std::path::Path::new("regatta_graph.pdf").exists() {
+        // Return an error response
+        let error_response = json!({
+            "error": "PDF file not found",
+            "message": "The regatta graph PDF file does not exist. Please generate it first using the 'graph' subcommand."
+        });
+        return Ok(Box::new(warp::reply::json(&error_response)));
+    }
+
+    // Read the PDF file
+    match std::fs::read("regatta_graph.pdf") {
+        Ok(pdf_content) => {
+            // Return the PDF file with proper headers
+            Ok(Box::new(warp::reply::with_header(
+                pdf_content,
+                "Content-Type",
+                "application/pdf"
+            )))
+        }
+        Err(_) => {
+            // Return an error response if we can't read the file
+            let error_response = json!({
+                "error": "File read error",
+                "message": "Could not read the PDF file"
+            });
+            Ok(Box::new(warp::reply::json(&error_response)))
+        }
+    }
 }
 
 // Custom error type for template rendering

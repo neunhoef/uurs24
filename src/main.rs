@@ -100,7 +100,7 @@ async fn main() {
         Some(("graph", graph_matches)) => {
             let output_path = graph_matches.get_one::<String>("output").unwrap();
             match export_regatta_graph(&data, output_path) {
-                Ok(()) => println!("Successfully exported graph to DOT file: {output_path}"),
+                Ok(()) => println!("Successfully exported graph to DOT file: {output_path} and generated PDF: regatta_graph.pdf"),
                 Err(e) => {
                     eprintln!("Error exporting graph to DOT file: {e}");
                     std::process::exit(1);
@@ -377,7 +377,7 @@ fn estimate_leg_performance_command(
     Ok(())
 }
 
-/// Export the regatta graph to a DOT file for graphviz visualization
+/// Export the regatta graph to a DOT file for graphviz visualization and generate PDF
 fn export_regatta_graph(
     data: &data::RegattaData,
     output_path: &str,
@@ -445,6 +445,30 @@ fn export_regatta_graph(
 
     // Write the DOT file
     std::fs::write(output_path, dot_content)?;
+
+    // Generate PDF from the DOT file using graphviz
+    println!("Generating PDF from DOT file...");
+    let pdf_output = "regatta_graph.pdf";
+    
+    let output = std::process::Command::new("dot")
+        .args(&["-Tpdf", output_path, "-o", pdf_output])
+        .output();
+    
+    match output {
+        Ok(output) => {
+            if output.status.success() {
+                println!("Successfully generated PDF: {}", pdf_output);
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                eprintln!("Warning: Failed to generate PDF: {}", stderr);
+                eprintln!("Note: Make sure 'dot' (graphviz) is installed on your system");
+            }
+        }
+        Err(e) => {
+            eprintln!("Warning: Could not execute 'dot' command: {}", e);
+            eprintln!("Note: Make sure 'dot' (graphviz) is installed on your system");
+        }
+    }
 
     Ok(())
 }
