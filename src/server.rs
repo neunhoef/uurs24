@@ -66,6 +66,12 @@ pub async fn start_server(data: RegattaData, port: u16) -> Result<(), Box<dyn st
         .and(warp::get())
         .and_then(handle_pdf);
 
+    // SVG file serving route
+    let svg_route = warp::path("regatta-course.svg")
+        .and(warp::path::end())
+        .and(warp::get())
+        .and_then(handle_svg);
+
     // Combine all routes - API routes must come before page routes to avoid conflicts
     let routes = index_route
         .or(estimate_form_route)
@@ -73,6 +79,7 @@ pub async fn start_server(data: RegattaData, port: u16) -> Result<(), Box<dyn st
         .or(health_route)
         .or(estimate_api_route)
         .or(pdf_route)
+        .or(svg_route)
         .with(warp::cors().allow_any_origin());
 
     println!("Starting HTTP server on http://0.0.0.0:{} (all interfaces)", port);
@@ -80,6 +87,7 @@ pub async fn start_server(data: RegattaData, port: u16) -> Result<(), Box<dyn st
     println!("  GET /              - Main menu");
     println!("  GET /estimate      - Estimate form");
     println!("  GET /regatta-graph.pdf - Show regatta graph as PDF");
+    println!("  GET /regatta-course.svg - Show regatta map as SVG");
     println!("  GET /version       - Get program version");
     println!("  GET /health        - Health check");
     println!("  GET /api/estimate?from=X&to=Y&time=Z - Estimate leg performance");
@@ -113,9 +121,9 @@ fn with_data(data: RegattaData) -> impl Filter<Extract = (RegattaData,), Error =
 // Handler for the main index page
 async fn handle_index(
     tera: Arc<Tera>,
-    data: RegattaData,
+    _data: RegattaData,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let mut context = Context::new();
+    let context = Context::new();
     let rendered_html = tera.render("index.html", &context)
         .map_err(|e| {
             eprintln!("Template rendering error: {}", e);
@@ -230,6 +238,39 @@ async fn handle_pdf() -> Result<Box<dyn warp::Reply>, warp::Rejection> {
             let error_response = json!({
                 "error": "File read error",
                 "message": "Could not read the PDF file"
+            });
+            Ok(Box::new(warp::reply::json(&error_response)))
+        }
+    }
+}
+
+// Handler for serving the SVG file
+async fn handle_svg() -> Result<Box<dyn warp::Reply>, warp::Rejection> {
+    // Check if the SVG file exists
+    if !std::path::Path::new("regatta_course.svg").exists() {
+        // Return an error response
+        let error_response = json!({
+            "error": "SVG file not found",
+            "message": "The regatta course SVG file does not exist. Please generate it first using the 'plot' subcommand."
+        });
+        return Ok(Box::new(warp::reply::json(&error_response)));
+    }
+
+    // Read the SVG file
+    match std::fs::read("regatta_course.svg") {
+        Ok(svg_content) => {
+            // Return the SVG file with proper headers
+            Ok(Box::new(warp::reply::with_header(
+                svg_content,
+                "Content-Type",
+                "image/svg+xml"
+            )))
+        }
+        Err(_) => {
+            // Return an error response if we can't read the file
+            let error_response = json!({
+                "error": "File read error",
+                "message": "Could not read the SVG file"
             });
             Ok(Box::new(warp::reply::json(&error_response)))
         }

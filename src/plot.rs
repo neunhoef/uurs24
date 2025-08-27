@@ -1,5 +1,5 @@
 use crate::data::RegattaData;
-use svg::node::element::{Line, Text, Group};
+use svg::node::element::{Line, Text, Group, Definitions, Marker, Polygon};
 use svg::Document;
 
 /// Plot configuration for the SVG output
@@ -85,10 +85,71 @@ pub fn create_regatta_plot(data: &RegattaData, config: PlotConfig) -> Result<Str
         .set("height", config.height)
         .set("viewBox", format!("0 0 {} {}", config.width, config.height));
     
+    // Create definitions for arrow markers
+    let mut defs = Definitions::new();
+    
+    // Green arrow marker for start legs
+    let green_arrow = Marker::new()
+        .set("id", "green-arrow")
+        .set("markerWidth", "10")
+        .set("markerHeight", "10")
+        .set("refX", "8")
+        .set("refY", "3")
+        .set("orient", "auto")
+        .set("markerUnits", "strokeWidth")
+        .add(
+            Polygon::new()
+                .set("points", "0,0 0,6 9,3")
+                .set("fill", "green")
+        );
+    
+    defs = defs.add(green_arrow);
+    document = document.add(defs);
+    
     // Create main group
     let mut main_group = Group::new();
     
-    // Draw all legs (rakken) first (so they appear behind buoys)
+    // Draw start legs first (as green arrows)
+    for start in &data.starts {
+        if let (Some(from_boei), Some(to_boei)) = (data.get_boei(&start.from), data.get_boei(&start.to)) {
+            if let (Some((from_lat, from_long)), Some((to_lat, to_long))) = 
+                (from_boei.coordinates(), to_boei.coordinates()) {
+                
+                let (from_x, from_y) = geo_to_svg(from_lat, from_long, bounds, &config);
+                let (to_x, to_y) = geo_to_svg(to_lat, to_long, bounds, &config);
+                
+                // Draw the start leg line with arrow
+                let start_line = Line::new()
+                    .set("x1", from_x)
+                    .set("y1", from_y)
+                    .set("x2", to_x)
+                    .set("y2", to_y)
+                    .set("stroke", "green")
+                    .set("stroke-width", config.line_width * 1.5) // Make start legs slightly thicker
+                    .set("marker-end", "url(#green-arrow)")
+                    .set("opacity", "0.8");
+                
+                main_group = main_group.add(start_line);
+                
+                // Add distance label near the center of the start line
+                let center_x = (from_x + to_x) / 2.0;
+                let center_y = (from_y + to_y) / 2.0 + config.text_size; // Offset to avoid overlap with leg labels
+                
+                let start_distance_text = Text::new(format!("START: {:.1} nm", start.distance))
+                    .set("x", center_x)
+                    .set("y", center_y)
+                    .set("text-anchor", "middle")
+                    .set("dominant-baseline", "middle")
+                    .set("font-size", config.text_size * 0.9) // Slightly smaller than leg labels
+                    .set("fill", "darkgreen")
+                    .set("font-weight", "bold");
+                
+                main_group = main_group.add(start_distance_text);
+            }
+        }
+    }
+    
+    // Draw all legs (rakken) second (so they appear over start legs but behind buoys)
     for rak in &data.rakken {
         if let (Some(from_boei), Some(to_boei)) = (data.get_boei(&rak.from), data.get_boei(&rak.to)) {
             if let (Some((from_lat, from_long)), Some((to_lat, to_long))) = 

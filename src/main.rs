@@ -185,6 +185,28 @@ fn show_regatta_data(data: &data::RegattaData) {
         }
     }
 
+    // Show all boeien with coordinates
+    println!("\nAll boeien with geo coordinates:");
+    let mut buoys_with_coords = 0;
+    let mut buoys_without_coords = 0;
+    
+    for boei in &data.boeien {
+        if boei.has_coordinates() {
+            if let Some((lat, long)) = boei.coordinates() {
+                let buoy_type_str = boei.buoy_type.as_ref().map(|t| format!(" ({})", t)).unwrap_or_default();
+                println!("  {}{} - {:.6}°N, {:.6}°E", boei.name, buoy_type_str, lat, long);
+                buoys_with_coords += 1;
+            }
+        } else {
+            buoys_without_coords += 1;
+        }
+    }
+    
+    if buoys_without_coords > 0 {
+        println!("  Note: {} boeien have no coordinate data", buoys_without_coords);
+    }
+    println!("  Total: {} boeien with coordinates, {} without", buoys_with_coords, buoys_without_coords);
+
     // Show start lines
     println!("\nStart lines:");
     for start in data.get_starts().iter() {
