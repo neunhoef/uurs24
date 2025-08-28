@@ -211,7 +211,10 @@ async fn handle_index(
     tera: Arc<Tera>,
     _data: RegattaData,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    let context = Context::new();
+    let mut context = Context::new();
+    context.insert("version", env!("CARGO_PKG_VERSION"));
+    context.insert("authors", "Claude and Max Neunhöffer");
+    
     let rendered_html = tera.render("index.html", &context).map_err(|e| {
         eprintln!("Template rendering error: {e}");
         warp::reject::custom(TemplateError)

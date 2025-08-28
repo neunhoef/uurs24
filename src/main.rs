@@ -12,7 +12,7 @@ use plot::save_regatta_plot;
 async fn main() {
     let matches = Command::new("uurs24")
         .about("24-hour regatta data management tool")
-        .version("1.0")
+        .version(env!("CARGO_PKG_VERSION"))
         .subcommand_negates_reqs(true)
         .subcommand(Command::new("show").about("Show regatta data and statistics"))
         .subcommand(
@@ -113,6 +113,7 @@ async fn main() {
                         .required(true),
                 ),
         )
+        .subcommand(Command::new("version").about("Display version information"))
         .get_matches();
 
     // Load data for every subcommand
@@ -237,6 +238,11 @@ async fn main() {
                     std::process::exit(1);
                 }
             }
+        }
+        Some(("version", _)) => {
+            println!("uurs24 version {}", env!("CARGO_PKG_VERSION"));
+            println!("24-hour regatta data management tool");
+            println!("Authors: Claude and Max Neunhöffer");
         }
         _ => {
             // Default behavior when no subcommand is provided
