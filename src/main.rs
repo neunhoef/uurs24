@@ -605,10 +605,10 @@ fn explore_target_paths_command(
     println!();
     
     // Explore all possible paths to the target
-    let paths = explore_target_paths(data, start_index, target_index, start_time, max_steps)?;
+    let paths = explore_target_paths(data, start_index, target_index, start_time, max_steps, None)?;
     
     if paths.is_empty() {
-        println!("No paths found from {} to {}.", start_name, target_name);
+        println!("No paths found from {start_name} to {target_name}.");
         return Ok(());
     }
     

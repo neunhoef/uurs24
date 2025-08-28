@@ -1,0 +1,279 @@
+{% extends "base.html" %}
+
+{% block title %}24 Uurs Zeilrace - Find Target Paths{% endblock %}
+
+{% block content %}
+<h2 style="text-align: center; margin-bottom: 40px; color: #2c3e50; font-size: 2rem;">Find Target Paths</h2>
+
+<form id="findTargetForm">
+    <div class="form-group">
+        <label for="start">Starting Point:</label>
+        <select id="start" name="start" required>
+            <option value="">Select starting buoy...</option>
+            {% for boei in boeien %}
+            <option value="{{ boei }}">{{ boei }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="target">Target Point:</label>
+        <select id="target" name="target" required>
+            <option value="">Select target buoy...</option>
+            {% for boei in boeien %}
+            <option value="{{ boei }}">{{ boei }}</option>
+            {% endfor %}
+        </select>
+    </div>
+
+    <div class="form-group">
+        <label for="time">Starting Time (hours after race start):</label>
+        <input type="number" id="time" name="time" step="0.1" min="0" max="24" required placeholder="Enter time in hours" value="0">
+    </div>
+
+    <div class="form-group">
+        <label for="steps">Maximum Steps:</label>
+        <input type="number" id="steps" name="steps" min="1" max="10" required placeholder="Enter maximum number of steps" value="5">
+    </div>
+
+    <div class="form-group">
+        <label for="maxPaths">Maximum Paths (optional):</label>
+        <input type="number" id="maxPaths" name="maxPaths" min="1" max="1000" placeholder="Enter maximum number of paths to report (default: unlimited)" value="50">
+    </div>
+
+    <div style="margin-top: 30px;">
+        <button type="submit" class="btn">Find Target Paths</button>
+        <a href="/" class="btn btn-secondary">Back to Main Menu</a>
+    </div>
+</form>
+
+<div class="loading" id="loading">
+    Searching for paths to target... 🎯
+</div>
+
+<div class="error" id="error"></div>
+
+<div class="result" id="result">
+    <h3>Paths to Target</h3>
+    <div id="paths-summary" style="margin-bottom: 20px; padding: 15px; background: #e8f4f8; border-radius: 8px; border-left: 4px solid #667eea;">
+        <div id="summary-text"></div>
+    </div>
+    <div id="paths-container"></div>
+</div>
+
+<style>
+.path-item {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 10px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.path-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    font-weight: 600;
+}
+
+.step-item {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 15px;
+    margin-bottom: 10px;
+    border-left: 4px solid #28a745;
+}
+
+.step-item:last-child {
+    margin-bottom: 0;
+}
+
+.step-details {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 10px;
+    margin-top: 10px;
+}
+
+.step-detail {
+    font-size: 0.9rem;
+    color: #6c757d;
+}
+
+.step-detail strong {
+    color: #495057;
+}
+
+.target-reached {
+    border-left-color: #dc3545 !important;
+    background: #fff5f5;
+}
+</style>
+
+<script>
+document.getElementById('findTargetForm').addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    const start = document.getElementById('start').value;
+    const target = document.getElementById('target').value;
+    const time = parseFloat(document.getElementById('time').value);
+    const steps = parseInt(document.getElementById('steps').value);
+    const maxPaths = parseInt(document.getElementById('maxPaths').value);
+    
+    if (!start || !target) {
+        showError('Please select both starting and target buoys.');
+        return;
+    }
+    
+    if (start === target) {
+        showError('Starting and target buoys must be different.');
+        return;
+    }
+    
+    if (isNaN(time) || time < 0 || time > 24) {
+        showError('Time must be between 0 and 24 hours.');
+        return;
+    }
+    
+    if (isNaN(steps) || steps < 1 || steps > 10) {
+        showError('Maximum steps must be between 1 and 10.');
+        return;
+    }
+    
+    if (!isNaN(maxPaths) && (maxPaths < 1 || maxPaths > 100000)) {
+        showError('Maximum paths must be between 1 and 100000.');
+        return;
+    }
+    
+    // Show loading, hide other elements
+    showLoading();
+    hideError();
+    hideResult();
+    
+    try {
+        let apiUrl = `/api/find-targets?start=${encodeURIComponent(start)}&target=${encodeURIComponent(target)}&time=${time}&steps=${steps}`;
+        if (!isNaN(maxPaths)) {
+            apiUrl += `&max_paths=${maxPaths}`;
+        }
+        const response = await fetch(apiUrl);
+        const data = await response.json();
+        
+        if (response.ok) {
+            displayPaths(data);
+        } else {
+            showError(data.message || 'An error occurred while searching for paths to the target.');
+        }
+    } catch (error) {
+        showError('Network error: Could not connect to the server.');
+    } finally {
+        hideLoading();
+    }
+});
+
+function showLoading() {
+    document.getElementById('loading').style.display = 'block';
+}
+
+function hideLoading() {
+    document.getElementById('loading').style.display = 'none';
+}
+
+function showError(message) {
+    const errorDiv = document.getElementById('error');
+    errorDiv.textContent = message;
+    errorDiv.style.display = 'block';
+}
+
+function hideError() {
+    document.getElementById('error').style.display = 'none';
+}
+
+function showResult() {
+    document.getElementById('result').style.display = 'block';
+}
+
+function hideResult() {
+    document.getElementById('result').style.display = 'none';
+}
+
+function displayPaths(data) {
+    const pathsContainer = document.getElementById('paths-container');
+    const summaryText = document.getElementById('summary-text');
+    
+    if (!data.paths || data.paths.length === 0) {
+        summaryText.innerHTML = `<strong>No paths found</strong> from <strong>${data.start}</strong> to <strong>${data.target}</strong> with the given parameters.`;
+        showResult();
+        return;
+    }
+    
+    // Display summary
+    const pathCount = data.paths.length;
+    const avgEndTime = data.paths.reduce((sum, path) => sum + path.end_time, 0) / pathCount;
+    const avgDistance = data.paths.reduce((sum, path) => sum + path.total_distance, 0) / pathCount;
+    const fastestPath = data.paths.reduce((min, path) => path.end_time < min.end_time ? path : min, data.paths[0]);
+    const slowestPath = data.paths.reduce((max, path) => path.end_time > max.end_time ? path : max, data.paths[0]);
+    
+    summaryText.innerHTML = `
+        <strong>Found ${pathCount} path(s)</strong> from <strong>${data.start}</strong> to <strong>${data.target}</strong><br>
+        <div style="margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+            <div><strong>Fastest:</strong> ${fastestPath.end_time.toFixed(2)} hours</div>
+            <div><strong>Slowest:</strong> ${slowestPath.end_time.toFixed(2)} hours</div>
+            <div><strong>Avg End Time:</strong> ${avgEndTime.toFixed(2)} hours</div>
+            <div><strong>Avg Distance:</strong> ${avgDistance.toFixed(2)} nm</div>
+        </div>
+    `;
+    
+    // Clear previous results
+    pathsContainer.innerHTML = '';
+    
+    // Display each path
+    data.paths.forEach((path, index) => {
+        const pathDiv = document.createElement('div');
+        pathDiv.className = 'path-item';
+        
+        const pathHeader = document.createElement('div');
+        pathHeader.className = 'path-header';
+        pathHeader.innerHTML = `
+            Path ${index + 1}: ${path.total_distance.toFixed(2)} nm total, 
+            ${path.end_time.toFixed(2)} hours end time (${(path.end_time - data.start_time).toFixed(2)}h journey)
+        `;
+        pathDiv.appendChild(pathHeader);
+        
+        // Display each step
+        path.steps.forEach((step, stepIndex) => {
+            const stepDiv = document.createElement('div');
+            stepDiv.className = 'step-item';
+            
+            // Highlight the final step that reaches the target
+            if (step.to_name === data.target) {
+                stepDiv.classList.add('target-reached');
+            }
+            
+            stepDiv.innerHTML = `
+                <div style="font-weight: 600; margin-bottom: 8px;">
+                    Step ${stepIndex + 1}: ${step.from_name} → ${step.to_name}
+                    ${step.to_name === data.target ? ' <span style="color: #dc3545;">🎯 TARGET REACHED</span>' : ''}
+                </div>
+                <div class="step-details">
+                    <div class="step-detail"><strong>Distance:</strong> ${step.distance.toFixed(2)} nm</div>
+                    <div class="step-detail"><strong>Speed:</strong> ${step.speed.toFixed(2)} kts</div>
+                    <div class="step-detail"><strong>Start:</strong> ${step.start_time.toFixed(2)}h</div>
+                    <div class="step-detail"><strong>End:</strong> ${step.end_time.toFixed(2)}h</div>
+                    <div class="step-detail"><strong>Duration:</strong> ${(step.end_time - step.start_time).toFixed(2)}h</div>
+                </div>
+            `;
+            
+            pathDiv.appendChild(stepDiv);
+        });
+        
+        pathsContainer.appendChild(pathDiv);
+    });
+    
+    showResult();
+}
+</script>
+{% endblock %}

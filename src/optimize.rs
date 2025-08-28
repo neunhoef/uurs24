@@ -245,6 +245,7 @@ pub fn explore_target_paths(
     target_point: usize,   // index of the target buoy
     start_time: f64,       // time in hours since race start
     max_steps: usize,      // maximum number of steps to explore
+    max_paths: Option<usize>, // maximum number of paths to return
 ) -> Result<Vec<Path>, Box<dyn std::error::Error>> {
     // Build the regatta graph
     let (graph, _node_indices) = build_regatta_graph(data);
@@ -273,7 +274,7 @@ pub fn explore_target_paths(
         total_distance: 0.0,
     };
     
-    explore_target_paths_recursive(data, &graph, initial_state, &mut all_paths)?;
+    explore_target_paths_recursive(data, &graph, initial_state, &mut all_paths, max_paths.unwrap_or(usize::MAX))?;
     
     Ok(all_paths)
 }
@@ -284,6 +285,7 @@ fn explore_target_paths_recursive(
     graph: &petgraph::Graph<Option<String>, crate::data::RegattaEdge>,
     state: TargetPathExplorationState,
     all_paths: &mut Vec<Path>,
+    max_paths: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
     // If we reached the target, save the current path
     if state.current_point == state.target_point {
@@ -292,6 +294,10 @@ fn explore_target_paths_recursive(
             total_distance: state.total_distance,
             end_time: state.current_time,
         });
+        // Exit early if we've reached the maximum number of paths
+        if all_paths.len() >= max_paths {
+            return Ok(());
+        }
         return Ok(());
     }
     
@@ -388,7 +394,12 @@ fn explore_target_paths_recursive(
         };
         
         // Continue exploring recursively
-        explore_target_paths_recursive(data, graph, new_state, all_paths)?;
+        explore_target_paths_recursive(data, graph, new_state, all_paths, max_paths)?;
+        
+        // Exit early if we've reached the maximum number of paths
+        if all_paths.len() >= max_paths {
+            return Ok(());
+        }
     }
     
     Ok(())
