@@ -1,14 +1,18 @@
 # Uurs24 - 24-Hour Regatta Data Management Tool
 
-A Rust-based command-line tool for managing and visualizing 24-hour regatta data, including buoys, start lines, legs, and polar performance data.
+A comprehensive Rust-based tool for managing and visualizing 24-hour regatta data, including buoys, start lines, legs, and polar performance data. Features both command-line interface and web-based interface for interactive analysis.
 
 ## Features
 
 - **Data Management**: Load and parse regatta data from CSV files
-- **Course Visualization**: Generate SVG plots of the regatta course
+- **Course Visualization**: Generate SVG plots and PDF graphs of the regatta course
 - **Performance Analysis**: Display polar performance data for different wind conditions
 - **Performance Estimation**: Estimate boat performance between buoys based on wind conditions and polar data
+- **Path Finding**: Explore all possible sailing paths from a starting point
+- **Target Path Analysis**: Find optimal paths to specific target buoys
 - **Graph Representation**: Build and analyze regatta course as a directed graph
+- **Web Interface**: Interactive web-based interface for sailing performance analysis
+- **REST API**: HTTP server providing programmatic access to all features
 - **Coordinate Handling**: Parse European coordinate formats (degrees, minutes, seconds)
 
 ## Project Structure
@@ -22,13 +26,24 @@ uurs24/
 │   ├── polars.csv      # Polar performance data
 │   ├── rakken.csv      # Course legs between buoys
 │   ├── starts.csv      # Start line definitions
-│   └── wind.csv        # Wind conditions during the race
+│   ├── wind.csv        # Wind conditions during the race
+│   └── zeiten.csv      # Race timing data
+├── templates/          # Web interface templates
+│   ├── base.html       # Base template with styling
+│   ├── index.html      # Main menu page
+│   ├── estimate.html   # Speed estimation form
+│   ├── estimate-leg.html # Leg estimation form
+│   ├── find-paths.html # Path finding form
+│   └── find-target.html # Target path form
 ├── regatta_course.svg  # Generated course visualization
+├── regatta_graph.pdf   # Generated graph visualization
+├── regatta-map.svg     # Regatta map visualization
 └── src/
     ├── main.rs         # Main application logic and CLI
     ├── data.rs         # Data structures and parsing
-    ├── optimize.rs     # Performance estimation and optimization algorithms
-    └── plot.rs         # SVG visualization generation
+    ├── optimize.rs     # Performance estimation and path finding algorithms
+    ├── plot.rs         # SVG visualization generation
+    └── server.rs       # HTTP server and web interface
 ```
 
 ## Installation
@@ -72,7 +87,13 @@ cargo install --path .
 # Estimate boat performance between two buoys
 ./target/release/uurs24 estimate OEVE WV12 2.0
 
-# Start HTTP server to serve regatta data
+# Explore all possible paths from a starting buoy
+./target/release/uurs24 paths OEVE 0.0 3
+
+# Find paths to a specific target buoy
+./target/release/uurs24 target OEVE WV12 0.0 5
+
+# Start HTTP server to serve regatta data and web interface
 ./target/release/uurs24 serve
 ./target/release/uurs24 serve --port 8080
 ```
@@ -83,11 +104,13 @@ cargo install --path .
 - `plot`: Generate SVG visualization with optional output file specification
 - `graph`: Export the regatta graph to a DOT file for graphviz visualization
 - `estimate`: Estimate boat performance between two buoys at a specific time
-- `serve`: Start HTTP server to serve regatta data via REST API
+- `paths`: Explore all possible sailing paths from a starting buoy for a given number of steps
+- `target`: Find optimal paths from a starting buoy to a specific target buoy
+- `serve`: Start HTTP server to serve regatta data via REST API and web interface
 
-## HTTP Server API
+## Web Interface
 
-The `serve` subcommand starts an HTTP server that provides REST API endpoints for accessing regatta data.
+The `serve` subcommand starts an HTTP server that provides both a web interface and REST API endpoints for accessing regatta data.
 
 ### Starting the Server
 
@@ -99,12 +122,28 @@ The `serve` subcommand starts an HTTP server that provides REST API endpoints fo
 ./target/release/uurs24 serve --port 8080
 ```
 
-### Available Endpoints
+### Web Interface Features
+
+The web interface provides an intuitive, maritime-themed interface with the following pages:
+
+- **Main Menu** (`/`) - Central navigation hub with links to all features
+- **Speed Estimation** (`/estimate`) - Form to estimate boat performance between two buoys
+- **Leg Speed Estimation** (`/estimate-leg`) - Form to estimate performance for specific course legs
+- **Path Finding** (`/find-paths`) - Explore all possible sailing paths from a starting point
+- **Target Path Analysis** (`/find-target`) - Find optimal paths to specific target buoys
+- **Course Visualization** (`/regatta-course.svg`) - Interactive SVG map of the regatta course
+- **Graph Visualization** (`/regatta-graph.pdf`) - PDF visualization of the regatta graph
+
+### REST API Endpoints
 
 - `GET /version` - Get program version information
-  - Response: `{"version": "0.1.0"}`
+  - Response: `{"version": "1.0"}`
 - `GET /health` - Health check endpoint
-  - Response: `{"status": "ok", "timestamp": "2025-08-26T21:50:52.063599926+00:00"}`
+  - Response: `{"status": "ok", "timestamp": "2025-01-27T..."}`
+- `GET /api/estimate?from=X&to=Y&time=Z` - Estimate boat performance between buoys
+- `GET /api/estimateleg?start=X&end=Y&time=Z` - Estimate performance for specific legs
+- `GET /api/find-paths?start=X&time=Y&steps=Z` - Find all possible paths
+- `GET /api/find-target?start=X&target=Y&time=Z&steps=W` - Find paths to target
 
 The server runs on `127.0.0.1` and supports CORS for cross-origin requests.
 
@@ -173,7 +212,20 @@ Wind conditions during the race:
   - Wind speed and sailing interpretation
 - Handles edge cases like beating (sailing into the wind) with appropriate speed reduction
 
-### Visualization
+### Path Finding and Route Optimization
+- Explores all possible sailing paths from any starting buoy
+- Analyzes multi-step routes with performance calculations for each leg
+- Finds optimal paths to specific target buoys
+- Takes into account wind conditions and boat performance for each route segment
+- Provides comprehensive route analysis including total time and distance
+
+### Advanced Visualization
+- Generates high-quality SVG course maps with detailed buoy layouts
+- Creates PDF graph visualizations using Graphviz integration
+- Supports both static file generation and web-based viewing
+- Interactive web interface for real-time visualization access
+
+### Legacy Visualization (Single Purpose)
 - SVG output with configurable dimensions
 - Geographic coordinate mapping
 - Buoy markers and course lines
@@ -182,10 +234,16 @@ Wind conditions during the race:
 ## Dependencies
 
 - **clap**: Command-line argument parsing
+- **chrono**: Date and time handling
 - **csv**: CSV file reading and parsing
 - **petgraph**: Graph data structures and algorithms
 - **serde**: Serialization/deserialization
+- **serde_json**: JSON serialization support
 - **svg**: SVG generation and manipulation
+- **tera**: Template engine for web interface
+- **tokio**: Asynchronous runtime for HTTP server
+- **warp**: Fast, lightweight HTTP framework
+- **mime_guess**: MIME type detection for static files
 
 ## Development
 
@@ -209,8 +267,10 @@ cargo clippy
 
 - **`src/main.rs`**: CLI interface and main application logic
 - **`src/data.rs`**: Data structures, CSV parsing, and graph building
-- **`src/optimize.rs`**: Performance estimation algorithms and optimization
+- **`src/optimize.rs`**: Performance estimation algorithms, path finding, and optimization
 - **`src/plot.rs`**: SVG visualization generation and coordinate mapping
+- **`src/server.rs`**: HTTP server implementation and web interface handlers
+- **`templates/`**: Tera templates for the web interface
 
 ## Example Output
 
@@ -245,6 +305,55 @@ Interpretation:
 ```
 
 This shows how the tool estimates boat performance between buoys OEVE and WV12 at 2 hours into the race, taking into account the course bearing, wind conditions, and polar performance data.
+
+### Path Finding Examples
+
+```bash
+# Explore all possible 3-step paths from OEVE starting at race start
+$ ./target/release/uurs24 paths OEVE 0.0 3
+
+Path Exploration from OEVE (Startboei):
+  Starting time: 0.0 hours
+  Max steps: 3
+
+Found paths:
+  1. OEVE → WV01 → WV02 → WV03 (Total time: 2.45h, Distance: 8.2nm)
+  2. OEVE → WV12 → WV13 → WV14 (Total time: 3.12h, Distance: 9.8nm)
+  ...
+
+# Find optimal paths from OEVE to WV12 with up to 5 steps
+$ ./target/release/uurs24 target OEVE WV12 0.0 5
+
+Target Path Analysis:
+  From: OEVE (Startboei)
+  To: WV12 (Markeerboei)  
+  Starting time: 0.0 hours
+  Max steps: 5
+
+Optimal paths found:
+  1. OEVE → WV12 (Direct, 1.8h, 6.2nm)
+  2. OEVE → WV01 → WV12 (Via WV01, 2.1h, 7.1nm)
+  ...
+```
+
+### Web Interface Example
+
+Access the web interface by starting the server and navigating to `http://127.0.0.1:3030/`:
+
+1. **Main Menu**: Choose from speed estimation, path finding, or visualization options
+2. **Interactive Forms**: Select buoys from dropdown menus and enter timing parameters
+3. **Real-time Results**: Get instant performance calculations and path analysis
+4. **Visual Navigation**: View course maps and graph visualizations directly in the browser
+
+## Browser Requirements
+
+The web interface is compatible with modern browsers:
+- Chrome/Chromium (recommended)
+- Firefox
+- Safari 
+- Edge
+
+JavaScript is required for interactive features and API communication.
 
 ## License
 
