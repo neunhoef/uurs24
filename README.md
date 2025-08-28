@@ -96,6 +96,9 @@ cargo install --path .
 # Start HTTP server to serve regatta data and web interface
 ./target/release/uurs24 serve
 ./target/release/uurs24 serve --port 8080
+
+# Show version information
+./target/release/uurs24 version
 ```
 
 ### Command Line Options
@@ -107,6 +110,7 @@ cargo install --path .
 - `paths`: Explore all possible sailing paths from a starting buoy for a given number of steps
 - `target`: Find optimal paths from a starting buoy to a specific target buoy
 - `serve`: Start HTTP server to serve regatta data via REST API and web interface
+- `version`: Display version information and program details
 
 ## Web Interface
 
@@ -136,16 +140,47 @@ The web interface provides an intuitive, maritime-themed interface with the foll
 
 ### REST API Endpoints
 
-- `GET /version` - Get program version information
-  - Response: `{"version": "1.0"}`
-- `GET /health` - Health check endpoint
-  - Response: `{"status": "ok", "timestamp": "2025-01-27T..."}`
-- `GET /api/estimate?from=X&to=Y&time=Z` - Estimate boat performance between buoys
-- `GET /api/estimateleg?start=X&end=Y&time=Z` - Estimate performance for specific legs
-- `GET /api/find-paths?start=X&time=Y&steps=Z` - Find all possible paths
-- `GET /api/find-target?start=X&target=Y&time=Z&steps=W` - Find paths to target
+#### System Endpoints
 
-The server runs on `127.0.0.1` and supports CORS for cross-origin requests.
+- `GET /version` - Get program version information
+  - Response: `{"version": "1.0.0"}`
+- `GET /health` - Health check endpoint
+  - Response: `{"status": "ok", "timestamp": "2025-01-27T10:30:00.123Z"}`
+
+#### Performance Analysis Endpoints
+
+- `GET /api/estimate?from=X&to=Y&time=Z` - Estimate boat performance between buoys
+  - Parameters:
+    - `from` (required): Starting buoy name
+    - `to` (required): Destination buoy name  
+    - `time` (required): Time in hours after race start
+  - Response: JSON with speed, bearing, wind conditions, and sailing interpretation
+
+- `GET /api/estimateleg?from=X&to=Y&reverse=Z&time=W` - Estimate performance for specific legs
+  - Parameters:
+    - `from` (required): Starting buoy name
+    - `to` (required): Destination buoy name
+    - `reverse` (optional): Boolean to reverse the leg direction
+    - `time` (required): Time in hours after race start
+
+#### Path Finding Endpoints
+
+- `GET /api/find-paths?start=X&time=Y&steps=Z&max_paths=N` - Find all possible paths from starting point
+  - Parameters:
+    - `start` (required): Starting buoy name
+    - `time` (required): Starting time in hours after race start
+    - `steps` (required): Maximum number of steps to explore
+    - `max_paths` (optional): Maximum number of paths to return (default: 1000, max: 100000)
+
+- `GET /api/find-targets?start=X&target=Y&time=Z&steps=W&max_paths=N` - Find paths to specific target
+  - Parameters:
+    - `start` (required): Starting buoy name
+    - `target` (required): Target buoy name
+    - `time` (required): Starting time in hours after race start
+    - `steps` (required): Maximum number of steps to explore
+    - `max_paths` (optional): Maximum number of paths to return (default: 1000, max: 100000)
+
+The server runs on all interfaces (`0.0.0.0`) and supports CORS for cross-origin requests.
 
 ## Data Format
 
@@ -282,6 +317,15 @@ The tool provides comprehensive output including:
 - Wind conditions during the race (hourly data)
 - Graph statistics (nodes and edges)
 - Coordinate information for navigation
+
+### Version Command Example
+
+```bash
+$ ./target/release/uurs24 version
+uurs24 version 1.0.0
+24-hour regatta data management tool
+Authors: Claude and Max Neunhöffer
+```
 
 ### Performance Estimation Example
 
