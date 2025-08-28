@@ -147,7 +147,7 @@ pub async fn start_server(data: RegattaData, port: u16) -> Result<(), Box<dyn st
     println!("  GET /health        - Health check");
     println!("  GET /api/estimate?from=X&to=Y&time=Z - Estimate leg performance");
     println!("  GET /api/estimateleg?from=X&to=Y&reverse=Z&time=W - Estimate leg performance");
-    println!("  GET /api/find-paths?start=X&time=Y&steps=Z - Find paths from starting point");
+    println!("  GET /api/find-paths?start=X&time=Y&steps=Z&max_paths=N - Find paths from starting point");
     println!("  GET /api/find-targets?start=X&target=Y&time=Z&steps=W&max_paths=N - Find paths to specific target");
 
     // Start the server
@@ -179,6 +179,7 @@ struct FindPathsQuery {
     start: String,
     time: f64,
     steps: usize,
+    max_paths: Option<usize>,
 }
 
 // Query parameters for the find target endpoint
@@ -464,8 +465,20 @@ async fn handle_find_paths(
         return Ok(warp::reply::json(&error_response));
     }
 
+    // Validate max_paths parameter
+    let max_paths = query.max_paths;
+    if let Some(max_paths_val) = max_paths {
+        if max_paths_val == 0 || max_paths_val > 100000 {
+            let error_response = json!({
+                "error": "Invalid max_paths",
+                "message": "Maximum number of paths must be between 1 and 100000"
+            });
+            return Ok(warp::reply::json(&error_response));
+        }
+    }
+
     // Explore paths
-    match explore_paths(&data, start_idx, query.time, query.steps) {
+    match explore_paths(&data, start_idx, query.time, query.steps, query.max_paths) {
         Ok(paths) => {
             // Convert paths to JSON-friendly format
             let paths_json: Vec<serde_json::Value> = paths

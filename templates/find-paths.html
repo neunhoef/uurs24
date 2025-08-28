@@ -26,6 +26,11 @@
         <input type="number" id="steps" name="steps" min="1" max="10" required placeholder="Enter number of steps" value="3">
     </div>
 
+    <div class="form-group">
+        <label for="maxPaths">Maximum Paths (optional):</label>
+        <input type="number" id="maxPaths" name="maxPaths" min="1" max="100000" placeholder="Enter maximum number of paths to report (default: unlimited)" value="50">
+    </div>
+
     <div style="margin-top: 30px;">
         <button type="submit" class="btn">Search Paths</button>
         <a href="/" class="btn btn-secondary">Back to Main Menu</a>
@@ -101,9 +106,15 @@ document.getElementById('findPathsForm').addEventListener('submit', async functi
     const start = document.getElementById('start').value;
     const time = parseFloat(document.getElementById('time').value);
     const steps = parseInt(document.getElementById('steps').value);
+    const maxPaths = parseInt(document.getElementById('maxPaths').value);
     
     if (!start || isNaN(time) || time < 0 || time > 24 || isNaN(steps) || steps < 1 || steps > 10) {
         showError('Please fill in all fields with valid values.');
+        return;
+    }
+    
+    if (!isNaN(maxPaths) && (maxPaths < 1 || maxPaths > 100000)) {
+        showError('Maximum paths must be between 1 and 100000.');
         return;
     }
     
@@ -113,7 +124,11 @@ document.getElementById('findPathsForm').addEventListener('submit', async functi
     hideResult();
     
     try {
-        const response = await fetch(`/api/find-paths?start=${encodeURIComponent(start)}&time=${time}&steps=${steps}`);
+        let apiUrl = `/api/find-paths?start=${encodeURIComponent(start)}&time=${time}&steps=${steps}`;
+        if (!isNaN(maxPaths)) {
+            apiUrl += `&max_paths=${maxPaths}`;
+        }
+        const response = await fetch(apiUrl);
         const data = await response.json();
         
         if (response.ok) {

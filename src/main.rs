@@ -517,7 +517,7 @@ fn explore_paths_command(
     println!();
     
     // Explore all possible paths
-    let paths = explore_paths(data, start_index, start_time, num_steps)?;
+    let paths = explore_paths(data, start_index, start_time, num_steps, None)?;
     
     if paths.is_empty() {
         println!("No paths found from this starting point.");
