@@ -1,5 +1,5 @@
 use crate::data::RegattaData;
-use crate::optimize::estimate_leg_performance;
+use crate::optimize::{estimate_leg_performance, explore_paths};
 use serde::Deserialize;
 use serde_json::json;
 use std::sync::Arc;
@@ -39,6 +39,14 @@ pub async fn start_server(data: RegattaData, port: u16) -> Result<(), Box<dyn st
         .and(with_data(data.clone()))
         .and_then(handle_estimate_leg_form);
 
+    // Find paths form page route
+    let find_paths_form_route = warp::path("find-paths")
+        .and(warp::path::end())
+        .and(warp::get())
+        .and(with_tera(tera.clone()))
+        .and(with_data(data.clone()))
+        .and_then(handle_find_paths_form);
+
     // Version endpoint
     let version_route = warp::path("version").and(warp::get()).map(|| {
         let response = json!({
@@ -72,6 +80,14 @@ pub async fn start_server(data: RegattaData, port: u16) -> Result<(), Box<dyn st
         .and(with_data(data.clone()))
         .and_then(handle_estimate_leg);
 
+    // Find paths API endpoint
+    let find_paths_api_route = warp::path("api")
+        .and(warp::path("find-paths"))
+        .and(warp::get())
+        .and(warp::query::<FindPathsQuery>())
+        .and(with_data(data.clone()))
+        .and_then(handle_find_paths);
+
     // PDF file serving route
     let pdf_route = warp::path("regatta-graph.pdf")
         .and(warp::path::end())
@@ -88,10 +104,12 @@ pub async fn start_server(data: RegattaData, port: u16) -> Result<(), Box<dyn st
     let routes = index_route
         .or(estimate_form_route)
         .or(estimate_leg_form_route)
+        .or(find_paths_form_route)
         .or(version_route)
         .or(health_route)
         .or(estimate_api_route)
         .or(estimate_leg_api_route)
+        .or(find_paths_api_route)
         .or(pdf_route)
         .or(svg_route)
         .with(warp::cors().allow_any_origin());
@@ -103,12 +121,14 @@ pub async fn start_server(data: RegattaData, port: u16) -> Result<(), Box<dyn st
     println!("  GET /              - Main menu");
     println!("  GET /estimate      - Estimate form");
     println!("  GET /estimate-leg  - Estimate leg form");
+    println!("  GET /find-paths    - Find paths form");
     println!("  GET /regatta-graph.pdf - Show regatta graph as PDF");
     println!("  GET /regatta-course.svg - Show regatta map as SVG");
     println!("  GET /version       - Get program version");
     println!("  GET /health        - Health check");
     println!("  GET /api/estimate?from=X&to=Y&time=Z - Estimate leg performance");
     println!("  GET /api/estimateleg?from=X&to=Y&reverse=Z&time=W - Estimate leg performance");
+    println!("  GET /api/find-paths?start=X&time=Y&steps=Z - Find paths from starting point");
 
     // Start the server
     warp::serve(routes).run(([0, 0, 0, 0], port)).await;
@@ -131,6 +151,14 @@ struct EstimateLegQuery {
     to: String,
     reverse: Option<bool>,
     time: f64,
+}
+
+// Query parameters for the find paths endpoint
+#[derive(Debug, Deserialize)]
+struct FindPathsQuery {
+    start: String,
+    time: f64,
+    steps: usize,
 }
 
 // Helper function to inject Tera into route handlers
@@ -208,6 +236,26 @@ async fn handle_estimate_leg_form(
 
     let rendered_html = tera.render("estimate-leg.html", &context).map_err(|e| {
         eprintln!("Template rendering error: {e:?}");
+        warp::reject::custom(TemplateError)
+    })?;
+
+    Ok(html(rendered_html))
+}
+
+// Handler for the find paths form page
+async fn handle_find_paths_form(
+    tera: Arc<Tera>,
+    data: RegattaData,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let mut context = Context::new();
+
+    // Get boeien names for the dropdown
+    let boeien: Vec<String> = data.boeien.iter().map(|boei| boei.name.clone()).collect();
+
+    context.insert("boeien", &boeien);
+
+    let rendered_html = tera.render("find-paths.html", &context).map_err(|e| {
+        eprintln!("Template rendering error: {e}");
         warp::reject::custom(TemplateError)
     })?;
 
@@ -329,6 +377,92 @@ async fn handle_estimate_leg(
     });
 
     Ok(warp::reply::json(&response))
+}
+
+// Handler for the find paths endpoint
+async fn handle_find_paths(
+    query: FindPathsQuery,
+    data: RegattaData,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    // Get starting buoy index by name
+    let start_idx = match data.get_boei_index(&query.start) {
+        Some(idx) => idx,
+        None => {
+            let error_response = json!({
+                "error": "Buoy not found",
+                "message": format!("Starting buoy '{}' not found", query.start)
+            });
+            return Ok(warp::reply::json(&error_response));
+        }
+    };
+
+    // Validate time parameter
+    if query.time < 0.0 || query.time > 24.0 {
+        let error_response = json!({
+            "error": "Invalid time",
+            "message": "Time must be between 0 and 24 hours"
+        });
+        return Ok(warp::reply::json(&error_response));
+    }
+
+    // Validate steps parameter
+    if query.steps == 0 || query.steps > 10 {
+        let error_response = json!({
+            "error": "Invalid steps",
+            "message": "Number of steps must be between 1 and 10"
+        });
+        return Ok(warp::reply::json(&error_response));
+    }
+
+    // Explore paths
+    match explore_paths(&data, start_idx, query.time, query.steps) {
+        Ok(paths) => {
+            // Convert paths to JSON-friendly format
+            let paths_json: Vec<serde_json::Value> = paths
+                .iter()
+                .map(|path| {
+                    let steps_json: Vec<serde_json::Value> = path
+                        .steps
+                        .iter()
+                        .map(|step| {
+                            json!({
+                                "from": step.from,
+                                "to": step.to,
+                                "from_name": data.boeien[step.from].name,
+                                "to_name": data.boeien[step.to].name,
+                                "distance": step.distance,
+                                "speed": step.speed,
+                                "start_time": step.start_time,
+                                "end_time": step.end_time
+                            })
+                        })
+                        .collect();
+
+                    json!({
+                        "steps": steps_json,
+                        "total_distance": path.total_distance,
+                        "end_time": path.end_time
+                    })
+                })
+                .collect();
+
+            let response = json!({
+                "start": query.start,
+                "start_time": query.time,
+                "steps": query.steps,
+                "paths": paths_json
+            });
+
+            Ok(warp::reply::json(&response))
+        }
+        Err(e) => {
+            let error_response = json!({
+                "error": "Path exploration failed",
+                "message": format!("Error exploring paths: {}", e)
+            });
+            Ok(warp::reply::json(&error_response))
+        }
+    }
 }
 
 // Handler for serving the PDF file

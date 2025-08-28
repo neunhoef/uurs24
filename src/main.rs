@@ -5,7 +5,7 @@ mod server;
 
 use clap::Command;
 use data::{build_regatta_graph, load_regatta_data};
-use optimize::{estimate_leg_performance, explore_paths};
+use optimize::{estimate_leg_performance, explore_paths, explore_target_paths};
 use plot::save_regatta_plot;
 
 #[tokio::main]
@@ -86,6 +86,30 @@ async fn main() {
                 .arg(
                     clap::Arg::new("steps")
                         .help("Number of steps to explore")
+                        .required(true),
+                ),
+        )
+        .subcommand(
+            Command::new("target")
+                .about("Explore paths from a starting point to a specific target")
+                .arg(
+                    clap::Arg::new("start")
+                        .help("Name of the starting buoy")
+                        .required(true),
+                )
+                .arg(
+                    clap::Arg::new("target")
+                        .help("Name of the target buoy")
+                        .required(true),
+                )
+                .arg(
+                    clap::Arg::new("time")
+                        .help("Starting time in hours after race start")
+                        .required(true),
+                )
+                .arg(
+                    clap::Arg::new("steps")
+                        .help("Maximum number of steps to explore")
                         .required(true),
                 ),
         )
@@ -174,6 +198,32 @@ async fn main() {
                         Ok(()) => {},
                         Err(e) => {
                             eprintln!("Error exploring paths: {e}");
+                            std::process::exit(1);
+                        }
+                    }
+                }
+                (Err(_), _) => {
+                    eprintln!("Error: time must be a valid number");
+                    std::process::exit(1);
+                }
+                (_, Err(_)) => {
+                    eprintln!("Error: steps must be a valid positive integer");
+                    std::process::exit(1);
+                }
+            }
+        }
+        Some(("target", target_matches)) => {
+            let start_name = target_matches.get_one::<String>("start").unwrap();
+            let target_name = target_matches.get_one::<String>("target").unwrap();
+            let time_str = target_matches.get_one::<String>("time").unwrap();
+            let steps_str = target_matches.get_one::<String>("steps").unwrap();
+            
+            match (time_str.parse::<f64>(), steps_str.parse::<usize>()) {
+                (Ok(time), Ok(steps)) => {
+                    match explore_target_paths_command(&data, start_name, target_name, time, steps) {
+                        Ok(()) => {},
+                        Err(e) => {
+                            eprintln!("Error exploring target paths: {e}");
                             std::process::exit(1);
                         }
                     }
@@ -514,6 +564,94 @@ fn explore_paths_command(
         println!("Summary:");
         println!("  Fastest path: {:.2} hours", fastest_path.end_time);
         println!("  Slowest path: {:.2} hours", slowest_path.end_time);
+        println!("  Average end time: {avg_end_time:.2} hours");
+        println!("  Average distance: {avg_distance:.2} nm");
+    }
+    
+    Ok(())
+}
+
+/// Explore paths from a starting buoy to a specific target buoy
+fn explore_target_paths_command(
+    data: &data::RegattaData,
+    start_name: &str,
+    target_name: &str,
+    start_time: f64,
+    max_steps: usize,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Find the starting buoy by name
+    let start_boei = data.get_boei(start_name)
+        .ok_or_else(|| format!("Starting buoy '{start_name}' not found"))?;
+    
+    // Find the target buoy by name
+    let target_boei = data.get_boei(target_name)
+        .ok_or_else(|| format!("Target buoy '{target_name}' not found"))?;
+    
+    // Get the indices of the starting and target buoys
+    let start_index = data.get_boei_index(start_name)
+        .ok_or_else(|| format!("Starting buoy '{start_name}' not found in index"))?;
+    
+    let target_index = data.get_boei_index(target_name)
+        .ok_or_else(|| format!("Target buoy '{target_name}' not found in index"))?;
+    
+    println!("Exploring paths from: {} ({}) to: {} ({})", 
+        start_name, 
+        start_boei.buoy_type.as_ref().unwrap_or(&"Unknown".to_string()),
+        target_name,
+        target_boei.buoy_type.as_ref().unwrap_or(&"Unknown".to_string())
+    );
+    println!("Starting time: {start_time:.1} hours after race start");
+    println!("Maximum steps: {max_steps}");
+    println!();
+    
+    // Explore all possible paths to the target
+    let paths = explore_target_paths(data, start_index, target_index, start_time, max_steps)?;
+    
+    if paths.is_empty() {
+        println!("No paths found from {} to {}.", start_name, target_name);
+        return Ok(());
+    }
+    
+    println!("Found {} path(s) to target:", paths.len());
+    println!();
+    
+    // Sort paths by end time for better readability
+    let mut sorted_paths = paths;
+    sorted_paths.sort_by(|a, b| a.end_time.partial_cmp(&b.end_time).unwrap_or(std::cmp::Ordering::Equal));
+    
+    // Print each path
+    for (i, path) in sorted_paths.iter().enumerate() {
+        println!("Path {} (Total: {:.2} nm, End time: {:.2} hours):", 
+            i + 1, path.total_distance, path.end_time);
+        
+        // Print each step in the path
+        for (j, step) in path.steps.iter().enumerate() {
+            let from_name = &data.boeien[step.from].name;
+            let to_name = &data.boeien[step.to].name;
+            
+            println!("  Step {}: {} -> {} ({:.2} nm, {:.2} kts, {:.2}h -> {:.2}h)", 
+                j + 1,
+                from_name,
+                to_name,
+                step.distance,
+                step.speed,
+                step.start_time,
+                step.end_time
+            );
+        }
+        println!();
+    }
+    
+    // Print summary statistics
+    if !sorted_paths.is_empty() {
+        let fastest_path = &sorted_paths[0];
+        let slowest_path = &sorted_paths[sorted_paths.len() - 1];
+        let avg_end_time: f64 = sorted_paths.iter().map(|p| p.end_time).sum::<f64>() / sorted_paths.len() as f64;
+        let avg_distance: f64 = sorted_paths.iter().map(|p| p.total_distance).sum::<f64>() / sorted_paths.len() as f64;
+        
+        println!("Summary:");
+        println!("  Fastest path to target: {:.2} hours", fastest_path.end_time);
+        println!("  Slowest path to target: {:.2} hours", slowest_path.end_time);
         println!("  Average end time: {avg_end_time:.2} hours");
         println!("  Average distance: {avg_distance:.2} nm");
     }
